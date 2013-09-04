@@ -13,6 +13,7 @@ from django.db import connections
 from django.test import TestCase
 import django
 
+from salesforce import auth
 from salesforce.backend import base
 from salesforce.testrunner.example.models import (Account, Contact, Lead, User,
 		BusinessHours, ChargentOrder, CronTrigger,
@@ -336,10 +337,11 @@ class BasicSOQLTest(TestCase):
 		objects = [Contact(LastName='sf_test a'), Contact(LastName='sf_test b')]
 		self.assertRaises(AssertionError, Contact.objects.bulk_create, objects)
 
-	def test_double_delete(self):
+	def test_double_delete_and_obsolete_session(self):
 		"""
 		Test that repeated delete of the same object is ignored the same way
 		like "DELETE FROM Contact WHERE Id='deleted yet'" would do.
+		Test it also after obsoleting the auth session.
 		"""
 		contact = Contact(LastName='sf_test',
 				Owner=User.objects.get(Username=current_user))
@@ -351,3 +353,8 @@ class BasicSOQLTest(TestCase):
 		Contact(pk='003000000000000AAA').delete()
 		bad_id = '003000000000000AAB' # Id with an incorrect uppercase mask
 		self.assertRaises(base.SalesforceError, Contact(pk=bad_id).delete)
+		# Simulate the same with obsoleted oauth session
+		# It is not possible to use salesforce.auth.expire_token() to simulate
+		# expiration because it forces reauhentication before the next request
+		auth.oauth_data['access_token'] = '* something invalid *'
+		Contact(pk=contact_id).delete()

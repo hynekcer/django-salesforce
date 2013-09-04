@@ -89,47 +89,52 @@ def reauthenticate():
 	return oauth['access_token']
 
 def handle_api_exceptions(url, f, *args, **kwargs):
-	from salesforce.backend import base
+	def inner():
+		from salesforce.backend import base
+		try:
+			return f(*args, **kwargs)
+		except restkit.ResourceNotFound, e:
+			data = json.loads(str(e))[0]
+			if (data['errorCode'] in (
+					# Deleted to the recycle bin
+					'ENTITY_IS_DELETED',
+					# Deleted or invalid reference, but the type is correct
+					'INVALID_CROSS_REFERENCE_KEY')
+					# and the query is update or delete
+					and f.__func__.__name__ in ('request', 'delete')):
+				# Does nothing similarly to delete with classic database query:
+				# DELETE FROM xy WHERE id = 'something_deleted_yet'
+				return NoResponse()
+			else:
+				raise base.SalesforceError("Couldn't connect to API (404): "
+						"%s, URL=%s" % (e, url))
+		except restkit.ResourceGone, e:
+			raise base.SalesforceError("Couldn't connect to API (410): %s" % e)
+		except restkit.RequestFailed, e:
+			data = json.loads(str(e))[0]
+			if(data['errorCode'] == 'INVALID_FIELD'):
+				raise base.SalesforceError(data['message'])
+			elif(data['errorCode'] == 'MALFORMED_QUERY'):
+				raise base.SalesforceError(data['message'])
+			elif(data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE'):
+				raise base.SalesforceError(data['message'])
+			elif(data['errorCode'] == 'METHOD_NOT_ALLOWED'):
+				raise base.SalesforceError('%s: %s' % (url, data['message']))
+			# some kind of failed query
+			else:
+				raise base.SalesforceError(str(data))
 	try:
-		return f(*args, **kwargs)
-	except restkit.ResourceNotFound, e:
-		data = json.loads(str(e))[0]
-		if (data['errorCode'] in (
-				# Deleted to the recycle bin
-				'ENTITY_IS_DELETED',
-				# Deleted or invalid reference, but the type is correct
-				'INVALID_CROSS_REFERENCE_KEY')
-				# and the query is update or delete
-				and f.__func__.__name__ in ('request', 'delete')):
-			# Does nothing similarly to delete with classic database query:
-			# DELETE FROM xy WHERE id = 'something_deleted_yet'
-			return NoResponse()
-		else:
-			raise base.SalesforceError("Couldn't connect to API (404): "
-					"%s, URL=%s" % (e, url))
-	except restkit.ResourceGone, e:
-		raise base.SalesforceError("Couldn't connect to API (410): %s" % e)
+		return inner()
 	except restkit.Unauthorized, e:
 		data = json.loads(str(e))[0]
 		if(data['errorCode'] == 'INVALID_SESSION_ID'):
 			token = reauthenticate()
 			if('headers' in kwargs):
 				kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
-			return f(*args, **kwargs)
+			# The exception handling is exactly the same immediately after
+			# session renewal as in the middle of session.
+			return inner()
 		raise base.SalesforceError(str(e))
-	except restkit.RequestFailed, e:
-		data = json.loads(str(e))[0]
-		if(data['errorCode'] == 'INVALID_FIELD'):
-			raise base.SalesforceError(data['message'])
-		elif(data['errorCode'] == 'MALFORMED_QUERY'):
-			raise base.SalesforceError(data['message'])
-		elif(data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE'):
-			raise base.SalesforceError(data['message'])
-		elif(data['errorCode'] == 'METHOD_NOT_ALLOWED'):
-			raise base.SalesforceError('%s: %s' % (url, data['message']))
-		# some kind of failed query
-		else:
-			raise base.SalesforceError(str(data))
 
 
 class NoResponse(object):
