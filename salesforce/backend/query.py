@@ -107,22 +107,22 @@ def handle_api_exceptions(url, f, *args, **kwargs):
 				return NoResponse()
 			else:
 				raise base.SalesforceError("Couldn't connect to API (404): "
-						"%s, URL=%s" % (e, url))
+						"%s, URL=%s" % (e, url), e)
 		except restkit.ResourceGone, e:
-			raise base.SalesforceError("Couldn't connect to API (410): %s" % e)
+			raise base.SalesforceError("Couldn't connect to API (410): %s" % e, e)
 		except restkit.RequestFailed, e:
 			data = json.loads(str(e))[0]
 			if(data['errorCode'] == 'INVALID_FIELD'):
-				raise base.SalesforceError(data['message'])
+				raise base.SalesforceError(data['message'], e)
 			elif(data['errorCode'] == 'MALFORMED_QUERY'):
-				raise base.SalesforceError(data['message'])
+				raise base.SalesforceError(data['message'], e)
 			elif(data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE'):
-				raise base.SalesforceError(data['message'])
+				raise base.SalesforceError(data['message'], e)
 			elif(data['errorCode'] == 'METHOD_NOT_ALLOWED'):
-				raise base.SalesforceError('%s: %s' % (url, data['message']))
+				raise base.SalesforceError('%s: %s' % (url, data['message']), e)
 			# some kind of failed query
 			else:
-				raise base.SalesforceError(str(data))
+				raise base.SalesforceError(str(data), e)
 	try:
 		return inner()
 	except restkit.Unauthorized, e:

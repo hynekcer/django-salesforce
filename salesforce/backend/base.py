@@ -9,6 +9,7 @@
 Salesforce database backend for Django.
 """
 
+import json
 import logging, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
@@ -24,8 +25,24 @@ from salesforce.backend import driver as Database
 
 log = logging.getLogger(__name__)
 
+
 class SalesforceError(DatabaseError):
-	pass
+	"""
+	Wrapps the original ResourceError from Salesforce + restkit by a customized
+	message and remembers the original exception.
+	"""
+	def __init__(self, message='', resource_error=None):
+		DatabaseError.__init__(self, message)
+		self.message = message
+		# Restkit message with attributes: msg, status_int, response
+		self.error = resource_error
+		# Salesforce REST API message with keys: 'message', 'errorCode',
+		# frequently also 'fields'
+		if resource_error:
+			self.data = json.loads(resource_error.msg)[0]
+		else:
+			self.data = {'message': message, 'errorCode': ''}
+
 
 class DatabaseFeatures(BaseDatabaseFeatures):
 	"""
