@@ -13,6 +13,7 @@ from django.db import connections
 from django.test import TestCase
 import django
 
+from salesforce.backend import base
 from salesforce.testrunner.example.models import (Account, Contact, Lead, User,
 		BusinessHours, ChargentOrder, CronTrigger,
 		GeneralCustomModel, test_custom_db_table, test_custom_db_column)
@@ -334,3 +335,19 @@ class BasicSOQLTest(TestCase):
 			self.skipTest('Django 1.3 has no bulk operations.')
 		objects = [Contact(LastName='sf_test a'), Contact(LastName='sf_test b')]
 		self.assertRaises(AssertionError, Contact.objects.bulk_create, objects)
+
+	def test_double_delete(self):
+		"""
+		Test that repeated delete of the same object is ignored the same way
+		like "DELETE FROM Contact WHERE Id='deleted yet'" would do.
+		"""
+		contact = Contact(LastName='sf_test',
+				Owner=User.objects.get(Username=current_user))
+		contact.save()
+		contact_id = contact.pk
+		Contact(pk=contact_id).delete()
+		# Id of a deleted object or a too small valid Id shouldn't raise
+		Contact(pk=contact_id).delete()
+		Contact(pk='003000000000000AAA').delete()
+		bad_id = '003000000000000AAB' # Id with an incorrect uppercase mask
+		self.assertRaises(base.SalesforceError, Contact(pk=bad_id).delete)

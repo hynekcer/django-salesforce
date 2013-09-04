@@ -93,8 +93,20 @@ def handle_api_exceptions(url, f, *args, **kwargs):
 	try:
 		return f(*args, **kwargs)
 	except restkit.ResourceNotFound, e:
-		raise base.SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-				% (e, url))
+		data = json.loads(str(e))[0]
+		if (data['errorCode'] in (
+				# Deleted to the recycle bin
+				'ENTITY_IS_DELETED',
+				# Deleted or invalid reference, but the type is correct
+				'INVALID_CROSS_REFERENCE_KEY')
+				# and the query is update or delete
+				and f.__func__.__name__ in ('request', 'delete')):
+			# Does nothing similarly to delete with classic database query:
+			# DELETE FROM xy WHERE id = 'something_deleted_yet'
+			return NoResponse()
+		else:
+			raise base.SalesforceError("Couldn't connect to API (404): "
+					"%s, URL=%s" % (e, url))
 	except restkit.ResourceGone, e:
 		raise base.SalesforceError("Couldn't connect to API (410): %s" % e)
 	except restkit.Unauthorized, e:
@@ -118,6 +130,12 @@ def handle_api_exceptions(url, f, *args, **kwargs):
 		# some kind of failed query
 		else:
 			raise base.SalesforceError(str(data))
+
+
+class NoResponse(object):
+	def body_string(self):
+		return ''
+
 
 def prep_for_deserialize(model, record, using):
 	attribs = record.pop('attributes')
