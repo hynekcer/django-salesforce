@@ -10,6 +10,7 @@ import pytz
 
 from django.conf import settings
 from django.test import TestCase
+import django
 
 from salesforce.testrunner.example.models import Account, Contact, Lead, ChargentOrder
 import django
@@ -18,7 +19,29 @@ import salesforce
 import logging
 log = logging.getLogger(__name__)
 
+DJANGO_14 = django.VERSION[:2] >= (1,4)
+
+current_user = settings.DATABASES['salesforce']['USER']
 test_email = 'test-djsf-unittests-email@example.com'
+sf_tables = [x['name'] for x in
+		connections['salesforce'].introspection.table_list_cache['sobjects']
+		]
+
+def refresh(obj):
+	"""
+	Get the same object refreshed from db.
+	"""
+	return obj.__class__.objects.get(pk=obj.pk)
+	
+def round_datetime_utc(timestamp):
+	"""Round to seconds and set zone to UTC."""
+	## sfdates are UTC to seconds precision but use a fixed-offset
+	## of +0000 (as opposed to a named tz)
+	timestamp = timestamp.replace(microsecond=0)
+	if DJANGO_14:
+		timestamp= timestamp.replace(tzinfo=pytz.utc)
+	return timestamp
+
 
 class BasicSOQLTest(TestCase):
 	def setUp(self):
@@ -39,20 +62,35 @@ class BasicSOQLTest(TestCase):
 		Clean up our test lead record.
 		"""
 		self.test_lead.delete()
+
+
+	def test_raw(self):
+		"""
+		Get the first two contact records.
+		"""
+		contacts = Contact.objects.raw(
+				"SELECT Id, LastName, FirstName FROM Contact "
+				"LIMIT 2")
+		self.assertEqual(len(contacts), 2)
+		'%s' % contacts[0].__dict__  # Check that all fields are accessible
+	
+	def test_raw_foreignkey_id(self):
+		"""
+		Get the first two contacts by raw query with a ForeignKey id field.
+		"""
+		contacts = Contact.objects.raw(
+				"SELECT Id, LastName, FirstName, OwnerId FROM Contact "
+				"LIMIT 2")
+		self.assertEqual(len(contacts), 2)
+		'%s' % contacts[0].__dict__  # Check that all fields are accessible
+		self.assertIn('@', contacts[0].Owner.Email)
 	
 	def test_select_all(self):
 		"""
-		Get the first five account records.
+		Get the first two contact records.
 		"""
-		accounts = Account.objects.all()[0:5]
-		self.assertEqual(len(accounts), 5)
-	
-	def test_select_all(self):
-		"""
-		Get the first five account records.
-		"""
-		accounts = Account.objects.all()[0:5]
-		self.assertEqual(len(accounts), 5)
+		contacts = Contact.objects.all()[0:2]
+		self.assertEqual(len(contacts), 2)
 	
 	def test_foreign_key(self):
 		account = Account.objects.all()[0]
@@ -105,10 +143,12 @@ class BasicSOQLTest(TestCase):
 		lead = Lead.objects.get(Email=test_email)
 		self.assertEqual(lead.FirstName, 'User')
 		self.assertEqual(lead.LastName, 'Unittest General')
+		# test a read only field (formula of full name)
+		self.assertEqual(lead.Name, 'User Unittest General')
 	
 	def test_not_null(self):
 		"""
-		Get the test lead record.
+		Get the test lead record by isnull condition.
 		"""
 		lead = Lead.objects.get(Email__isnull=False, FirstName='User')
 		self.assertEqual(lead.FirstName, 'User')
@@ -120,16 +160,28 @@ class BasicSOQLTest(TestCase):
 		"""
 		test_lead = Lead(FirstName=u'\u2603', LastName="Unittest Unicode", Email='test-djsf-unicode-email@example.com', Company="Some company")
 		test_lead.save()
-		self.assertEqual(test_lead.FirstName, u'\u2603')
-		test_lead.delete()
+		try:
+			self.assertEqual(refresh(test_lead).FirstName, u'\u2603')
+		finally:
+			test_lead.delete()
 	
 	def test_date_comparison(self):
 		"""
 		Test that date comparisons work properly.
 		"""
-		yesterday = datetime.datetime(2011,06,26)
-		accounts = Account.objects.filter(LastModifiedDate__gt=yesterday)
-		self.assertEqual(bool(accounts.count()), True)
+		today = round_datetime_utc(datetime.datetime(2013, 8, 27))
+		yesterday = today - datetime.timedelta(days=1)
+		tomorrow = today + datetime.timedelta(days=1)
+		contact = Contact(FirstName='sf_test', LastName='date',
+				EmailBouncedDate=today)
+		contact.save()
+		try:
+			contacts1 = Contact.objects.filter(EmailBouncedDate__gt=yesterday)
+			self.assertEqual(len(contacts1), 1)
+			contacts2 = Contact.objects.filter(EmailBouncedDate__gt=tomorrow)
+			self.assertEqual(len(contacts2), 0)
+		finally:
+			contact.delete()
 	
 	def test_insert(self):
 		"""
@@ -137,8 +189,10 @@ class BasicSOQLTest(TestCase):
 		"""
 		test_lead = Lead(FirstName="User", LastName="Unittest Inserts", Email='test-djsf-inserts-email@example.com', Company="Some company")
 		test_lead.save()
-		self.assertEqual(len(test_lead.pk), 18)
-		test_lead.delete()
+		try:
+			self.assertEqual(len(test_lead.pk), 18)
+		finally:
+			test_lead.delete()
 	
 	def test_delete(self):
 		"""
@@ -152,16 +206,13 @@ class BasicSOQLTest(TestCase):
 	
 	def test_update(self):
 		"""
-		Update the test lead record, then delete it.
+		Update the test lead record.
 		"""
 		test_lead = Lead.objects.get(Email=test_email)
 		self.assertEquals(test_lead.FirstName, 'User')
-		
 		test_lead.FirstName = 'Tested'
 		test_lead.save()
-		
-		fetched_lead = Lead.objects.get(Email=test_email)
-		self.assertEqual(fetched_lead.FirstName, 'Tested')
+		self.assertEqual(refresh(test_lead).FirstName, 'Tested')
 
 	def test_custom_objects(self):
 		"""

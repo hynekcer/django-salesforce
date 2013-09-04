@@ -139,7 +139,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 				field['name'], # name,
 				field['type'], # type_code,
 				field['length'], # display_size,
-				field['byteLength'], # internal_size,
+				field['length'], # internal_size,
 				field['precision'], # precision,
 				field['scale'], # scale,
 				field['nillable'], # null_ok,

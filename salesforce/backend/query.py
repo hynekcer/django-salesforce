@@ -16,7 +16,7 @@ from django.core.serializers import python
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connections
 from django.db.models import query
-from django.db.models.sql import Query, constants, subqueries
+from django.db.models.sql import Query, RawQuery, constants, subqueries
 from django.db.backends.signals import connection_created
 from django.utils.encoding import force_unicode
 
@@ -86,34 +86,58 @@ def reauthenticate():
 	return oauth['access_token']
 
 def handle_api_exceptions(url, f, *args, **kwargs):
-	from salesforce.backend import base
+	def inner():
+		from salesforce.backend import base
+		try:
+			return f(*args, **kwargs)
+		except restkit.ResourceNotFound, e:
+			data = json.loads(str(e))[0]
+			if (data['errorCode'] in (
+					# Deleted to the recycle bin
+					'ENTITY_IS_DELETED',
+					# Deleted or invalid reference, but the type is correct
+					'INVALID_CROSS_REFERENCE_KEY')
+					# and the query is update or delete
+					and f.__func__.__name__ in ('request', 'delete')):
+				# Does nothing similarly to delete with classic database query:
+				# DELETE FROM xy WHERE id = 'something_deleted_yet'
+				return NoResponse()
+			else:
+				raise base.SalesforceError("Couldn't connect to API (404): "
+						"%s, URL=%s" % (e, url), e)
+		except restkit.ResourceGone, e:
+			raise base.SalesforceError("Couldn't connect to API (410): %s" % e, e)
+		except restkit.RequestFailed, e:
+			data = json.loads(str(e))[0]
+			if(data['errorCode'] == 'INVALID_FIELD'):
+				raise base.SalesforceError(data['message'], e)
+			elif(data['errorCode'] == 'MALFORMED_QUERY'):
+				raise base.SalesforceError(data['message'], e)
+			elif(data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE'):
+				raise base.SalesforceError(data['message'], e)
+			elif(data['errorCode'] == 'METHOD_NOT_ALLOWED'):
+				raise base.SalesforceError('%s: %s' % (url, data['message']), e)
+			# some kind of failed query
+			else:
+				raise base.SalesforceError(str(data), e)
 	try:
-		return f(*args, **kwargs)
-	except restkit.ResourceNotFound, e:
-		raise base.SalesforceError("Couldn't connect to API (404): %s" % e)
-	except restkit.ResourceGone, e:
-		raise base.SalesforceError("Couldn't connect to API (410): %s" % e)
+		return inner()
 	except restkit.Unauthorized, e:
 		data = json.loads(str(e))[0]
 		if(data['errorCode'] == 'INVALID_SESSION_ID'):
 			token = reauthenticate()
 			if('headers' in kwargs):
 				kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
-			return f(*args, **kwargs)
+			# The exception handling is exactly the same immediately after
+			# session renewal as in the middle of session.
+			return inner()
 		raise base.SalesforceError(str(e))
-	except restkit.RequestFailed, e:
-		data = json.loads(str(e))[0]
-		if(data['errorCode'] == 'INVALID_FIELD'):
-			raise base.SalesforceError(data['message'])
-		elif(data['errorCode'] == 'MALFORMED_QUERY'):
-			raise base.SalesforceError(data['message'])
-		elif(data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE'):
-			raise base.SalesforceError(data['message'])
-		elif(data['errorCode'] == 'METHOD_NOT_ALLOWED'):
-			raise base.SalesforceError('%s: %s' % (url, data['message']))
-		# some kind of failed query
-		else:
-			raise base.SalesforceError(str(data))
+
+
+class NoResponse(object):
+	def body_string(self):
+		return ''
+
 
 def prep_for_deserialize(model, record, using):
 	attribs = record.pop('attributes')
@@ -149,6 +173,9 @@ def prep_for_deserialize(model, record, using):
 	)
 
 def extract_values(query):
+	"""
+	Extract values from insert or update query.
+	"""
 	d = dict()
 	fields = query.model._meta.fields
 	for index in range(len(fields)):
@@ -175,6 +202,15 @@ def get_resource(url):
 	log.debug('Request API URL: %s' % url)
 	return resource
 
+class SalesforceRawQuerySet(query.RawQuerySet):
+	def __len__(self):
+		if(self.query.cursor is None):
+			# force the query
+			self.query.get_columns()
+			return len(self.query.cursor.results)
+		else:
+			return 0;
+
 class SalesforceQuerySet(query.QuerySet):
 	"""
 	Use a custom SQL compiler to generate SOQL-compliant queries.
@@ -192,12 +228,34 @@ class SalesforceQuerySet(query.QuerySet):
 		for res in python.Deserializer(pfd(self.model, r, self.db) for r in cursor.results):
 			yield res.object
 
+class SalesforceRawQuery(RawQuery):
+	def clone(self, using):
+		return SalesforceRawQuery(self.sql, using, params=self.params)
+
+	def get_columns(self):
+		if self.cursor is None:
+			self._execute_query()
+		converter = connections[self.using].introspection.table_name_converter
+		if(len(self.cursor.results) > 0):
+			return [converter(col) for col in self.cursor.results[0].keys() if col != 'attributes']
+		return []
+
+	def _execute_query(self):
+		self.cursor = CursorWrapper(connections[self.using], self)
+		self.cursor.execute(self.sql, self.params)
+	
+	def __repr__(self):
+		return "<SalesforceRawQuery: %r>" % (self.sql % tuple(self.params))
+
 class SalesforceQuery(Query):
 	"""
 	Override aggregates.
 	"""
 	from salesforce.backend import aggregates
 	aggregates_module = aggregates
+	
+	def clone(self, klass=None, memo=None, **kwargs):
+		return Query.clone(self, klass, memo, **kwargs)
 	
 	def has_results(self, using):
 		q = self.clone()
@@ -218,7 +276,7 @@ class CursorWrapper(object):
 		connection_created.send(sender=self.__class__, connection=self)
 		self.settings_dict = conn.settings_dict
 		self.query = query
-		self.results = iter([])
+		self.results = []
 		self.rowcount = None
 	
 	@property
@@ -234,6 +292,8 @@ class CursorWrapper(object):
 		
 		self.rowcount = None
 		if(isinstance(self.query, SalesforceQuery)):
+			response = self.execute_select(q, args)
+		elif(isinstance(self.query, SalesforceRawQuery)):
 			response = self.execute_select(q, args)
 		elif(isinstance(self.query, subqueries.InsertQuery)):
 			response = self.execute_insert(self.query)
@@ -273,7 +333,7 @@ class CursorWrapper(object):
 			
 			self.results = self.query_results(data)
 		else:
-			self.results = iter([])
+			self.results = []
 	
 	def execute_select(self, q, args):
 		processed_sql = q % process_args(args)
@@ -327,8 +387,15 @@ class CursorWrapper(object):
 	
 	def execute_delete(self, query):
 		table = query.model._meta.db_table
-		# this will break in multi-row updates
-		pk = self.query.where.children[0][-1][0]
+		## the root where node's children may itself have children..
+		def recurse_for_pk(children):
+			for node in children:
+				try:
+					pk = node[-1][0]
+				except TypeError:
+					pk = recurse_for_pk(node.children)
+				return pk
+		pk = recurse_for_pk(self.query.where.children)
 		assert pk
 		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/%s' % (table, pk))
 		headers = dict()
@@ -339,9 +406,10 @@ class CursorWrapper(object):
 		return handle_api_exceptions(url, resource.delete, headers=headers)
 	
 	def query_results(self, results):
+		output = []
 		while True:
 			for rec in results['records']:
-				yield rec
+				output.append(rec)
 
 			if results['done']:
 				break
@@ -354,13 +422,17 @@ class CursorWrapper(object):
 				results = json.loads(jsrc)
 			else:
 				break
+		return output
+	
+	def __iter__(self):
+		return iter(self.results)
 
 	def fetchone(self):
 		"""
 		Fetch a single result from a previously executed query.
 		"""
 		try:
-			return next(self.results)
+			return self.results.pop(0)
 		except StopIteration:
 			return None
 

@@ -9,6 +9,7 @@
 Adds support for Salesforce primary keys.
 """
 
+import warnings
 from django.core import exceptions
 from django.utils.translation import ugettext_lazy as _
 from django.db.models import fields
