@@ -5,12 +5,15 @@
 # See LICENSE.md for details
 #
 
+from decimal import Decimal
 import datetime
 import pytz
+import random
+import string
 
 from django.conf import settings
 from django.test import TestCase
-import django
+from django.utils.unittest import skip, skipUnless
 
 from salesforce.testrunner.example.models import Account, Contact, Lead, ChargentOrder
 import django
@@ -19,13 +22,13 @@ import salesforce
 import logging
 log = logging.getLogger(__name__)
 
-DJANGO_14 = django.VERSION[:2] >= (1,4)
-
+random_slug = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for x in range(32))
 current_user = settings.DATABASES['salesforce']['USER']
-test_email = 'test-djsf-unittests-email@example.com'
+test_email = 'test-djsf-unittests-%s@example.com' % random_slug
 sf_tables = [x['name'] for x in
 		connections['salesforce'].introspection.table_list_cache['sobjects']
 		]
+
 
 def refresh(obj):
 	"""
@@ -38,8 +41,7 @@ def round_datetime_utc(timestamp):
 	## sfdates are UTC to seconds precision but use a fixed-offset
 	## of +0000 (as opposed to a named tz)
 	timestamp = timestamp.replace(microsecond=0)
-	if DJANGO_14:
-		timestamp= timestamp.replace(tzinfo=pytz.utc)
+	timestamp = timestamp.replace(tzinfo=pytz.utc)
 	return timestamp
 
 
@@ -67,13 +69,16 @@ class BasicSOQLTest(TestCase):
 	def test_raw(self):
 		"""
 		Get the first two contact records.
+		(At least 3 manually created Contacts must exist before these read-only tests.)
 		"""
 		contacts = Contact.objects.raw(
 				"SELECT Id, LastName, FirstName FROM Contact "
 				"LIMIT 2")
 		self.assertEqual(len(contacts), 2)
+		# It had a side effect that the same assert failed second times.
+		self.assertEqual(len(contacts), 2)
 		'%s' % contacts[0].__dict__  # Check that all fields are accessible
-	
+
 	def test_raw_foreignkey_id(self):
 		"""
 		Get the first two contacts by raw query with a ForeignKey id field.
@@ -84,14 +89,25 @@ class BasicSOQLTest(TestCase):
 		self.assertEqual(len(contacts), 2)
 		'%s' % contacts[0].__dict__  # Check that all fields are accessible
 		self.assertIn('@', contacts[0].Owner.Email)
-	
+
 	def test_select_all(self):
 		"""
 		Get the first two contact records.
 		"""
 		contacts = Contact.objects.all()[0:2]
 		self.assertEqual(len(contacts), 2)
-	
+
+	def test_exclude_query_construction(self):
+		"""
+		Test that exclude query construction returns valid SOQL.
+		"""
+		contacts = Contact.objects.filter(FirstName__isnull=False).exclude(Email="steve@apple.com", LastName="Wozniak").exclude(LastName="smith")
+		number_of_contacts = contacts.count()
+		self.assertIsInstance(number_of_contacts, int)
+		# the default self.test_lead shouldn't be excluded by only one nondition
+		leads = Lead.objects.exclude(Email="steve@apple.com", LastName="Unittest General").filter(FirstName="User", LastName="Unittest General")
+		self.assertEqual(leads.count(), 1)
+
 	def test_foreign_key(self):
 		account = Account.objects.all()[0]
 		user = account.Owner
@@ -154,6 +170,21 @@ class BasicSOQLTest(TestCase):
 		self.assertEqual(lead.FirstName, 'User')
 		self.assertEqual(lead.LastName, 'Unittest General')
 	
+	def test_not_null_related(self):
+		"""
+		Verify conditions `isnull` for foreign keys: filter(Account=None)
+		filter(Account__isnull=True) and nested in Q(...) | Q(...).
+		"""
+		test_contact = Contact(FirstName='sf_test', LastName='my')
+		test_contact.save()
+		try:
+			contacts = Contact.objects.filter(Q(Account__isnull=True) |
+					Q(Account=None), Account=None, Account__isnull=True,
+					FirstName='sf_test')
+			self.assertEqual(len(contacts), 1)
+		finally:
+			test_contact.delete()
+	
 	def test_unicode(self):
 		"""
 		Make sure weird unicode breaks properly.
@@ -209,11 +240,34 @@ class BasicSOQLTest(TestCase):
 		Update the test lead record.
 		"""
 		test_lead = Lead.objects.get(Email=test_email)
-		self.assertEquals(test_lead.FirstName, 'User')
+		self.assertEqual(test_lead.FirstName, 'User')
 		test_lead.FirstName = 'Tested'
 		test_lead.save()
 		self.assertEqual(refresh(test_lead).FirstName, 'Tested')
 
+	def test_decimal_precision(self):
+		"""
+		Ensure that the precision on a DecimalField of a record saved to
+		or retrieved from SalesForce is equal.
+		"""
+		product = Product(Name="Test Product")
+		product.save()
+
+		# The price for a product must be set in the standard price book.
+		# http://www.salesforce.com/us/developer/docs/api/Content/sforce_api_objects_pricebookentry.htm
+		pricebook = Pricebook.objects.get(Name="Standard Price Book")
+		saved_pricebook_entry = PricebookEntry(Product2Id=product, Pricebook2Id=pricebook, UnitPrice=Decimal('1234.56'), UseStandardPrice=False)
+		saved_pricebook_entry.save()
+		retrieved_pricebook_entry = PricebookEntry.objects.get(pk=saved_pricebook_entry.pk)
+
+		try:
+			self.assertEqual(saved_pricebook_entry.UnitPrice, retrieved_pricebook_entry.UnitPrice)
+		finally:
+			retrieved_pricebook_entry.delete()
+			product.delete()
+
+	@skipUnless('ChargentOrders__ChargentOrder__c' in sf_tables,
+			'Not found custom tables ChargentOrders__*')
 	def test_custom_objects(self):
 		"""
 		Make sure custom objects work.

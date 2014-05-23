@@ -1,9 +1,14 @@
 django-salesforce
 =================
 
+.. image:: https://travis-ci.org/freelancersunion/django-salesforce.svg?branch=master
+   :target: https://travis-ci.org/freelancersunion/django-salesforce
+
 This library allows you to load and edit the objects in any Salesforce instance using Django models. The integration
 is fairly complete, and generally seamless for most uses. It works by integrating with the Django ORM, allowing access
 to the objects in your SFDC instance as if they were "local" databases.
+
+Python 2.6, 2.7, 3.3, 3.4 or pypy; Django 1.4 - 1.7 (but Django 1.4 can't be combined with Python 3)
 
 Quick Start
 -----------
@@ -47,13 +52,55 @@ Quick Start
    setting::
 
     DATABASE_ROUTERS = [
-        "salesforce.router.ModelRouter" 
+        "salesforce.router.ModelRouter"
 	]
 
 7. Define a model that extends ``salesforce.models.SalesforceModel``
+   or export the complete SF schema by
+   ``python manage.py inspectdb --database=salesforce`` and simplify it
+   to what you need. If an inner ``Meta`` class is used, e.g. for a
+   ``db_table`` option of custom SF object with a name that ends with ``__c``,
+   then that Meta must be a descendant of ``SalesforceModel.Meta`` or must have
+   the attribute ``managed=False``.
+
 8. If you want to use the model in the Django admin interface, use a
    ModelAdmin that extends ``salesforce.admin.RoutedModelAdmin``
 9. You're all done! Just use your model like a normal Django model.
+
+Foreign Key Support
+-------------------
+
+**Foreign key** filters are currently possible only for the first level of
+relationship and only for fields whose name equals the name of object.
+Foreign keys of an object can be normally accessed by dot notation without any
+restriction
+Example:
+
+    contacts = Contact.objects.filter(Account__Name='FOO Company')
+	print(contacts[0].Account.Owner.LastName)
+
+But the relationship ``Owner__Name`` is not currently possible because the
+type of ``Owner`` is a different name (``User``).
+
+Along similar lines, it's not currently possible to filter by `ForeignKey`
+relationships based on a custom field. This is because related objects
+(Lookup field or Master-Detail Relationship) use two different names in
+`SOQL <http://www.salesforce.com/us/developer/docs/soql_sosl/>`__. If the
+relation is by ID the columns are named `FieldName__c`, whereas if the relation
+is stored by object the column is named `FieldName__r`. More details about
+this can be found in the discussion about `#43 <https://github.com/freelancersunion/django-salesforce/issues/43>`__.
+
+**Generic foreign keys** are frequently used in SF for fields that relate to
+objects of different types, e.g. the Parent of Note or Attachment can be almost
+any type of ususal SF objects. Filters by `Parent.Type` and retrieving this
+type is now supported:
+
+    note = Note.objects.filter(parent_type='Contact')[0]
+	parent_model = getattr(example.models, note.parent_type)
+	parent_object = parent_model.objects.get(pk=note.parent_id)
+	assert note.parent_type == 'Contact'
+
+Example of `Note` model is in `salesforce.testrunner.example.models.Note`.
 
 Caveats
 -------

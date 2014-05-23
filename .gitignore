@@ -3,6 +3,7 @@
 *.pyc
 local_settings.py
 build
+dist
 *.egg-info
 .*.swp
 salesforce_testrunner_db

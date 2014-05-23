@@ -9,7 +9,7 @@
 Salesforce object query customizations.
 """
 
-import urllib, logging, types, datetime, decimal
+import logging, types, datetime, decimal
 
 from django.conf import settings
 from django.core.serializers import python
@@ -17,25 +17,28 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import connections
 from django.db.models import query
 from django.db.models.sql import Query, RawQuery, constants, subqueries
-from django.db.backends.signals import connection_created
-from django.utils.encoding import force_unicode
+from django.utils.encoding import force_text
+from django.utils.six import PY3
 
-import django
 from itertools import islice
 from pkg_resources import parse_version
 DJANGO_14 = (parse_version(django.get_version()) >= parse_version('1.4'))
 DJANGO_16 = (parse_version(django.get_version()) >= parse_version('1.5.99'))
 
-import restkit
+import requests
 import pytz
 
-from salesforce import auth, models
-from salesforce.backend import compiler
+from salesforce import auth, models, DJANGO_16, DJANGO_17_PLUS
+from salesforce.backend import compiler, sf_alias
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE
 
 try:
+	from urllib.parse import urlencode
+except ImportError:
+	from urllib import urlencode
+try:
 	import json
-except ImportError, e:
+except ImportError:
 	import simplejson as json
 
 log = logging.getLogger(__name__)
@@ -49,11 +52,12 @@ else:
 
 def quoted_string_literal(s, d):
 	"""
-	According to the SQL standard, this should be all you need to do to escape any kind of string.
+	SOQL requires single quotes to be escaped.
+	http://www.salesforce.com/us/developer/docs/soql_sosl/Content/sforce_api_calls_soql_select_quotedstringescapes.htm
 	"""
 	try:
-		return "'%s'" % (s.replace("'", "''"),)
-	except TypeError, e:
+		return "'%s'" % (s.replace("'", "\\'"),)
+	except TypeError as e:
 		raise NotImplementedError("Cannot quote %r objects: %r" % (type(s), s))
 
 def process_args(args):
@@ -82,7 +86,7 @@ def process_json_args(args):
 
 def reauthenticate():
 	auth.expire_token()
-	oauth = auth.authenticate(settings.DATABASES[settings.SALESFORCE_DB_ALIAS])
+	oauth = auth.authenticate(settings.DATABASES[sf_alias])
 	return oauth['access_token']
 
 def handle_api_exceptions(url, f, *args, **kwargs):
@@ -141,7 +145,7 @@ class NoResponse(object):
 
 def prep_for_deserialize(model, record, using):
 	attribs = record.pop('attributes')
-	
+
 	mod = model.__module__.split('.')
 	if(mod[-1] == 'models'):
 		app_label = mod[-2]
@@ -149,7 +153,7 @@ def prep_for_deserialize(model, record, using):
 		app_label = getattr(model._meta, 'app_label')
 	else:
 		raise ImproperlyConfigured("Can't discover the app_label for %s, you must specify it via model meta options.")
-	
+
 	fields = dict()
 	for x in model._meta.fields:
 		if not x.primary_key:
@@ -164,8 +168,18 @@ def prep_for_deserialize(model, record, using):
 					field_val.endswith('Z')):
 				fields[x.name] = field_val[:-1]  # Fix time e.g. "23:59:59.000Z"
 			else:
-				fields[x.name] = field_val
-	
+				# Normal fields
+				field_val = record[x.column]
+				#db_type = x.db_type(connection=connections[using])
+				if(x.__class__.__name__ == 'DateTimeField' and field_val is not None):
+					d = datetime.datetime.strptime(field_val, SALESFORCE_DATETIME_FORMAT)
+					import pytz
+					d = d.replace(tzinfo=pytz.utc)
+					fields[x.name] = d.strftime(DJANGO_DATETIME_FORMAT)
+				else:
+					fields[x.name] = field_val
+
+
 	return dict(
 		model	= '.'.join([app_label, model.__name__]),
 		pk		= record.pop('Id'),
@@ -196,20 +210,12 @@ def extract_values(query):
 			d[field.db_column or field.name] = arg
 	return d
 
-def get_resource(url):
-	salesforce_timeout = getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', 3)
-	resource = restkit.Resource(url, timeout=salesforce_timeout)
-	log.debug('Request API URL: %s' % url)
-	return resource
-
 class SalesforceRawQuerySet(query.RawQuerySet):
 	def __len__(self):
-		if(self.query.cursor is None):
+		if self.query.cursor is None:
 			# force the query
 			self.query.get_columns()
-			return len(self.query.cursor.results)
-		else:
-			return 0;
+		return self.query.cursor.rowcount
 
 class SalesforceQuerySet(query.QuerySet):
 	"""
@@ -223,10 +229,20 @@ class SalesforceQuerySet(query.QuerySet):
 		sql, params = compiler.SQLCompiler(self.query, connections[self.db], None).as_sql()
 		cursor = CursorWrapper(connections[self.db], self.query)
 		cursor.execute(sql, params)
-		
+
 		pfd = prep_for_deserialize
 		for res in python.Deserializer(pfd(self.model, r, self.db) for r in cursor.results):
 			yield res.object
+
+	def query_all(self):
+		"""
+		Allows querying for also deleted or merged records.
+			Lead.objects.query_all().filter(IsDeleted=True,...)
+		https://www.salesforce.com/us/developer/docs/api_rest/Content/resources_queryall.htm
+		"""
+		obj = self._clone(klass=SalesforceQuerySet)
+		obj.query.set_query_all()
+		return obj
 
 class SalesforceRawQuery(RawQuery):
 	def clone(self, using):
@@ -236,14 +252,14 @@ class SalesforceRawQuery(RawQuery):
 		if self.cursor is None:
 			self._execute_query()
 		converter = connections[self.using].introspection.table_name_converter
-		if(len(self.cursor.results) > 0):
-			return [converter(col) for col in self.cursor.results[0].keys() if col != 'attributes']
-		return []
+		if self.cursor.rowcount > 0:
+			return [converter(col) for col in self.cursor.first_row.keys() if col != 'attributes']
+		return ['Id']
 
 	def _execute_query(self):
 		self.cursor = CursorWrapper(connections[self.using], self)
 		self.cursor.execute(self.sql, self.params)
-	
+
 	def __repr__(self):
 		return "<SalesforceRawQuery: %r>" % (self.sql % tuple(self.params))
 
@@ -251,34 +267,56 @@ class SalesforceQuery(Query):
 	"""
 	Override aggregates.
 	"""
-	from salesforce.backend import aggregates
-	aggregates_module = aggregates
-	
+	# Warn against name collision: The name 'aggregates' is the name of
+	# a new property introduced by Django 1.7 to the parent class
+	# 'django.db.models.sql.query.Query'.
+	# 'aggregates_module' is overriden here, to be visible in the base class.
+	from salesforce.backend import aggregates as aggregates_module
+
+	def __init__(self, *args, **kwargs):
+		super(SalesforceQuery, self).__init__(*args, **kwargs)
+		self.is_query_all = False
+		self.first_chunk_len = None
+
 	def clone(self, klass=None, memo=None, **kwargs):
-		return Query.clone(self, klass, memo, **kwargs)
-	
+		query = Query.clone(self, klass, memo, **kwargs)
+		query.is_query_all = self.is_query_all
+		return query
+
 	def has_results(self, using):
 		q = self.clone()
 		compiler = q.get_compiler(using=using)
 		return bool(compiler.execute_sql(constants.SINGLE))
 
+	def set_query_all(self):
+		self.is_query_all = True
+
 class CursorWrapper(object):
 	"""
 	A wrapper that emulates the behavior of a database cursor.
-	
+
 	This is the class that is actually responsible for making connections
 	to the SF REST API
 	"""
-	def __init__(self, conn, query=None):
+	def __init__(self, connection, query=None):
 		"""
 		Connect to the Salesforce API.
 		"""
-		connection_created.send(sender=self.__class__, connection=self)
-		self.settings_dict = conn.settings_dict
+		self.settings_dict = connection.settings_dict
+		self.connection = connection
+		self.session = connection.sf_session
 		self.query = query
-		self.results = []
+		# A consistent value is iter([]), but `self.results` can be undefined until execute
+		self.results = None
 		self.rowcount = None
-	
+		self.first_row = None
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, type, value, traceback):
+		self.close()
+
 	@property
 	def oauth(self):
 		return auth.authenticate(self.settings_dict)
@@ -289,17 +327,17 @@ class CursorWrapper(object):
 		Send a query to the Salesforce API.
 		"""
 		from salesforce.backend import base
-		
+
 		self.rowcount = None
-		if(isinstance(self.query, SalesforceQuery)):
+		if isinstance(self.query, SalesforceQuery) or self.query is None:
 			response = self.execute_select(q, args)
-		elif(isinstance(self.query, SalesforceRawQuery)):
+		elif isinstance(self.query, SalesforceRawQuery):
 			response = self.execute_select(q, args)
-		elif(isinstance(self.query, subqueries.InsertQuery)):
+		elif isinstance(self.query, subqueries.InsertQuery):
 			response = self.execute_insert(self.query)
-		elif(isinstance(self.query, subqueries.UpdateQuery)):
+		elif isinstance(self.query, subqueries.UpdateQuery):
 			response = self.execute_update(self.query)
-		elif(isinstance(self.query, subqueries.DeleteQuery)):
+		elif isinstance(self.query, subqueries.DeleteQuery):
 			response = self.execute_delete(self.query)
 		elif (self.query is None and hasattr(q, 'lower') and q.lower().startswith('select')):
 			# Executing custom SOQL directy by cursor
@@ -326,15 +364,19 @@ class CursorWrapper(object):
 			# something we don't recognize
 			else:
 				raise base.DatabaseError(data)
-			
-			if('count()' in q.lower()):
+
+			if q.upper().startswith('SELECT COUNT() FROM'):
+				# TODO what about raw query COUNT()
 				# COUNT() queries in SOQL are a special case, as they don't actually return rows
-				data['records'] = [{self.rowcount:'COUNT'}]
-			
-			self.results = self.query_results(data)
+				self.results = iter([[self.rowcount]])
+			else:
+				if self.query:
+					self.query.first_chunk_len = len(data['records'])
+				self.first_row = data['records'][0] if data['records'] else None
+				self.results = self.query_results(data)
 		else:
-			self.results = []
-	
+			self.results = iter([])
+
 	def execute_select(self, q, args):
 		processed_sql = q % process_args(args)
 		url = u'%s%s?%s' % (self.oauth['instance_url'], '%s/query' % API_STUB, urllib.urlencode(dict(
@@ -346,84 +388,76 @@ class CursorWrapper(object):
 		resource = get_resource(url)
 		
 		log.debug(processed_sql)
-		return handle_api_exceptions(url, resource.get, headers=headers)
-	
+		return handle_api_exceptions(url, self.session.get, _cursor=self)
+
 	def query_more(self, nextRecordsUrl):
 		url = u'%s%s' % (self.oauth['instance_url'], nextRecordsUrl)
-		headers = dict(Authorization='OAuth %s' % self.oauth['access_token'])
-		resource = get_resource(url)
-		return handle_api_exceptions(url, resource.get, headers=headers)
-	
+		return handle_api_exceptions(url, self.session.get, _cursor=self)
+
 	def execute_insert(self, query):
 		table = query.model._meta.db_table
 		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/' % table)
-		headers = dict()
-		headers['Authorization'] = 'OAuth %s' % self.oauth['access_token']
-		headers['Content-Type'] = 'application/json'
+		headers = {'Content-Type': 'application/json'}
 		post_data = extract_values(query)
-		resource = get_resource(url)
+
 		log.debug('INSERT %s%s' % (table, post_data))
-		return handle_api_exceptions(url, resource.post, headers=headers, payload=json.dumps(post_data))
-	
+		return handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data), _cursor=self)
+
 	def execute_update(self, query):
 		table = query.model._meta.db_table
 		# this will break in multi-row updates
-		if DJANGO_16:
+		if DJANGO_17_PLUS:
+			pk = query.where.children[0].rhs
+		elif DJANGO_16:
 			pk = query.where.children[0][3]
 		else:
 			pk = query.where.children[0].children[0][-1]
 		assert pk
 		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/%s' % (table, pk))
-		headers = dict()
-		headers['Authorization'] = 'OAuth %s' % self.oauth['access_token']
-		headers['Content-Type'] = 'application/json'
+		headers = {'Content-Type': 'application/json'}
 		post_data = extract_values(query)
-		resource = get_resource(url)
-		
 		log.debug('UPDATE %s(%s)%s' % (table, pk, post_data))
-		ret = handle_api_exceptions(url, resource.request, method='PATCH', headers=headers, payload=json.dumps(post_data))
+		ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data), _cursor=self)
 		self.rowcount = 1
 		return ret
-	
+
 	def execute_delete(self, query):
 		table = query.model._meta.db_table
 		## the root where node's children may itself have children..
 		def recurse_for_pk(children):
 			for node in children:
-				try:
-					pk = node[-1][0]
-				except TypeError:
-					pk = recurse_for_pk(node.children)
+				if hasattr(node, 'rhs'):
+					pk = node.rhs[0]  # for Django 1.7+
+				else:
+					try:
+						pk = node[-1][0]
+					except TypeError:
+						pk = recurse_for_pk(node.children)
 				return pk
 		pk = recurse_for_pk(self.query.where.children)
 		assert pk
 		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/%s' % (table, pk))
-		headers = dict()
-		headers['Authorization'] = 'OAuth %s' % self.oauth['access_token']
-		resource = get_resource(url)
-		
+
 		log.debug('DELETE %s(%s)' % (table, pk))
-		return handle_api_exceptions(url, resource.delete, headers=headers)
-	
+		return handle_api_exceptions(url, self.session.delete, _cursor=self)
+
 	def query_results(self, results):
-		output = []
 		while True:
 			for rec in results['records']:
-				output.append(rec)
+				if rec['attributes']['type'] == 'AggregateResult':
+					assert len(rec) -1 == len(list(self.query.aggregate_select.items()))
+					# The 'attributes' info is unexpected for Django within fields.
+					rec = [rec[k] for k, _ in self.query.aggregate_select.items()]
+				yield rec
 
 			if results['done']:
 				break
-			
-			# http://www.salesforce.com/us/developer/docs/api_rest/Content/dome_query.htm#heading_2_1
+
+			# see about Retrieving the Remaining SOQL Query Results
+			# http://www.salesforce.com/us/developer/docs/api_rest/Content/dome_query.htm#retrieve_remaining_results_title
 			response = self.query_more(results['nextRecordsUrl'])
-			jsrc = force_unicode(response.body_string()).encode(settings.DEFAULT_CHARSET)
-		
-			if(jsrc):
-				results = json.loads(jsrc)
-			else:
-				break
-		return output
-	
+			results = response.json(parse_float=decimal.Decimal)
+
 	def __iter__(self):
 		return iter(self.results)
 
@@ -432,14 +466,16 @@ class CursorWrapper(object):
 		Fetch a single result from a previously executed query.
 		"""
 		try:
-			return self.results.pop(0)
+			return next(self.results)
 		except StopIteration:
 			return None
 
-	def fetchmany(self, size=0):
+	def fetchmany(self, size=None):
 		"""
 		Fetch multiple results from a previously executed query.
 		"""
+		if size is None:
+			size = 200
 		return list(islice(self.results, size))
 
 	def fetchall(self):
@@ -447,6 +483,9 @@ class CursorWrapper(object):
 		Fetch all results from a previously executed query.
 		"""
 		return list(self.results)
+
+	def close(self):  # for Django 1.7+
+		pass
 
 string_literal = quoted_string_literal
 def date_literal(d, c):
@@ -466,26 +505,25 @@ def sobj_id(obj, conv):
 # supported types
 sql_conversions = {
 	int: lambda s,d: str(s),
-	long: lambda s,d: str(s),
 	float: lambda o,d: '%.15g' % o,
-	types.NoneType: lambda s,d: 'NULL',
+	type(None): lambda s,d: 'NULL',
 	str: lambda o,d: string_literal(o, d), # default
-	unicode: lambda s,d: string_literal(s.encode('utf8'), d),
 	bool: lambda s,d: str(s).lower(),
 	datetime.date: lambda d,c: datetime.date.strftime(d, "%Y-%m-%d"),
 	datetime.datetime: lambda d,c: date_literal(d, c),
 	decimal.Decimal: lambda s,d: float(s),
 	models.SalesforceModel: sobj_id,
 }
+if not PY3:
+	sql_conversions[long] = lambda s,d: str(s)
+	sql_conversions[unicode] = lambda s,d: string_literal(s.encode('utf8'), d)
 
 # supported types
 json_conversions = {
 	int: lambda s,d: str(s),
-	long: lambda s,d: str(s),
 	float: lambda o,d: '%.15g' % o,
-	types.NoneType: lambda s,d: None,
+	type(None): lambda s,d: None,
 	str: lambda o,d: o, # default
-	unicode: lambda s,d: s.encode('utf8'),
 	bool: lambda s,d: str(s).lower(),
 	datetime.date: lambda d,c: datetime.date.strftime(d, "%Y-%m-%d"),
 	datetime.datetime: date_literal,
@@ -493,3 +531,6 @@ json_conversions = {
 	decimal.Decimal: lambda s,d: float(s),
 	models.SalesforceModel: sobj_id,
 }
+if not PY3:
+	json_conversions[long] = lambda s,d: str(s)
+	json_conversions[unicode] = lambda s,d: s.encode('utf8')

@@ -30,7 +30,7 @@ class User(SalesforceModel):
 	Email = models.CharField(max_length=100)
 	LastName = models.CharField(max_length=80)
 	FirstName = models.CharField(max_length=40)
-	IsActive = models.BooleanField()
+	IsActive = models.BooleanField(default=False)
 
 
 class AbstractAccount(SalesforceModel):
@@ -154,7 +154,7 @@ class ChargentOrder(SalesforceModel):
 	CreatedDate = models.CharField(max_length=255, db_column='CreatedDate')
 	CreatedById = models.CharField(max_length=255, db_column='CreatedById')
 	LastModifiedDate = models.CharField(max_length=255,
-									    db_column='LastModifiedDate')
+										db_column='LastModifiedDate')
 	LastModifiedById = models.CharField(max_length=255,
 										db_column='LastModifiedById')
 	SystemModstamp = models.CharField(max_length=255, db_column='SystemModstamp')
@@ -249,9 +249,12 @@ class CronTrigger(SalesforceModel):
 class BusinessHours(SalesforceModel):
 	Name = models.CharField(db_column='Name', max_length=80)
 	# The default record is automatically created by Salesforce.
-	IsDefault = models.BooleanField(verbose_name='Default Business Hours')
+	IsDefault = models.BooleanField(default=False, verbose_name='Default Business Hours')
 	# ... much more fields, but we use only this one TimeFiled for test
 	MondayStartTime = models.TimeField()
+
+	class Meta:
+		verbose_name_plural = "BusinessHours"
 
 
 test_custom_db_table, test_custom_db_column = getattr(settings,
@@ -266,10 +269,17 @@ class GeneralCustomModel(SalesforceModel):
  		TEST_CUSTOM_FIELD = 'TIMBASURVEYS__SurveyQuestion__c.TIMBASURVEYS__Question__c'
  	Other fields shouldn't be required for saving that object.
  	"""
-	# The line "managed = False" or Meta inherited from SalesforceMoled.Meta
+	# The line "managed = False" or Meta inherited from SalesforceModel.Meta
 	# is especially important if the model shares a table with other model.
  	class Meta:
  		db_table = test_custom_db_table
  		managed = False
 
  	GeneralCustomField = models.CharField(max_length=255, db_column=test_custom_db_column)
+
+
+class Note(SalesforceModel):
+	title = models.CharField(max_length=80, db_column='Title')
+	body = models.TextField(null=True, db_column='Body')
+	parent_id = models.CharField(max_length=18, db_column='ParentId')
+	parent_type =  models.CharField(max_length=50, db_column='Parent.Type', sf_read_only=models.READ_ONLY)

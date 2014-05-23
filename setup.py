@@ -5,11 +5,6 @@
 # See LICENSE.md for details
 #
 
-from __future__ import with_statement
-
-import distribute_setup
-distribute_setup.use_setuptools()
-
 import os, os.path, subprocess
 
 # disables creation of .DS_Store files inside tarballs on Mac OS X
@@ -49,14 +44,18 @@ def get_tagged_version():
 			cwd		= os.path.dirname(__file__) or None
 		)
 		(stdoutdata, stderrdata) = proc.communicate()
+		
 		if(proc.returncode):
 			raise RuntimeError(stderrdata)
-		version = stdoutdata.strip().lstrip('v')
 		
-		print "writing version file..."
-		with open(relative_path('VERSION'), 'w') as f:
-			f.write(version)
-	print 'package version: %s' % version
+		version = stdoutdata.decode("utf-8").strip().lstrip('v')
+		
+		print("writing version file...")
+		f = open(relative_path('VERSION'), 'w')
+		f.write(version)
+		f.close()
+	
+	print('package version: %s' % version)
 	return version
 
 def autosetup():
@@ -65,7 +64,6 @@ def autosetup():
 		name			= "django-salesforce",
 		version			= get_tagged_version(),
 		
-		include_package_data = True,
 		zip_safe		= False,
 		packages		= find_packages(),
 

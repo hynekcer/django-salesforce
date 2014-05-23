@@ -14,8 +14,6 @@ ADMINS = (
 
 PERSON_ACCOUNT_ACTIVATED = False
 
-MANAGERS = ADMINS
-
 DATABASES = {
 	'default': {
 		'ENGINE': 'django.db.backends.sqlite3',
@@ -25,11 +23,11 @@ DATABASES = {
 	# in order to protect private secret values from unintentional committing.
 	'salesforce': {
 		'ENGINE': 'salesforce.backend',
-		"CONSUMER_KEY" : '',
-		"CONSUMER_SECRET" : '',
-		'USER': '',
-		'PASSWORD': '',
-		'HOST': 'https://test.salesforce.com',
+		"CONSUMER_KEY" : os.environ.get('SF_CONSUMER_KEY', ''),
+		"CONSUMER_SECRET" : os.environ.get('SF_CONSUMER_SECRET', ''),
+		'USER': os.environ.get('SF_USER', ''),
+		'PASSWORD': os.environ.get('SF_PASSWORD', ''),
+		'HOST': 'https://login.salesforce.com',
 	}
 }
 DATABASES.update(settings_secret.DATABASES)
@@ -46,8 +44,6 @@ TIME_ZONE = 'America/New_York'
 # Language code for this installation. All choices can be found here:
 # http://www.i18nguy.com/unicode/language-identifiers.html
 LANGUAGE_CODE = 'en-us'
-
-SITE_ID = 1
 
 # If you set this to False, Django will make some optimizations so as not
 # to load the internationalization machinery.
@@ -94,12 +90,7 @@ STATICFILES_FINDERS = (
 # Make this unique, and don't share it with anybody.
 SECRET_KEY = '6$y&o(28l)#o1_2rafojb_&zxi*jnivkv)ygj#!01kt0ypsxe$'
 
-# List of callables that know how to import templates from various sources.
-TEMPLATE_LOADERS = (
-	'django.template.loaders.filesystem.Loader',
-	'django.template.loaders.app_directories.Loader',
-#	  'django.template.loaders.eggs.Loader',
-)
+SITE_ID = 1
 
 MIDDLEWARE_CLASSES = (
 	'django.middleware.common.CommonMiddleware',
@@ -107,6 +98,7 @@ MIDDLEWARE_CLASSES = (
 	'django.middleware.csrf.CsrfViewMiddleware',
 	'django.contrib.auth.middleware.AuthenticationMiddleware',
 	'django.contrib.messages.middleware.MessageMiddleware',
+	'django.middleware.clickjacking.XFrameOptionsMiddleware',
 )
 
 ROOT_URLCONF = 'salesforce.testrunner.urls'
@@ -151,7 +143,8 @@ LOGGING = {
 		},
 		'mail_admins': {
 			'level': 'ERROR',
-			'class': 'django.utils.log.AdminEmailHandler'
+			'class': 'django.utils.log.AdminEmailHandler',
+			'filters': ['require_debug_false'],
 		}
 	},
 	'loggers': {
@@ -170,10 +163,20 @@ LOGGING = {
 			'level': 'INFO',
 			'propagate': True,
 		},
+	},
+	'filters': {
+		'require_debug_false': {
+			"()": "django.utils.log.RequireDebugFalse",
+		}
 	}
 }
 
+# Preventive workaround for some problems with IPv6 by restricting DNS queries
+# in the Python process only to IPv4, until the support by SFDC become stable.
+# SFDC enabled IPv6 for a week in March 2014. It caused long delays somewhere.
+IPV4_ONLY = True
+
 try:
 	from salesforce.testrunner.local_settings import *
-except ImportError, exp:
+except ImportError:
 	pass
