@@ -28,6 +28,8 @@ import salesforce
 import logging
 log = logging.getLogger(__name__)
 
+DJANGO_14_PLUS = django.VERSION[:2] >= (1,4)
+
 random_slug = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for x in range(32))
 sf_alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
 current_user = settings.DATABASES[sf_alias]['USER']
@@ -46,6 +48,15 @@ def refresh(obj):
 	db = obj._state.db
 	return type(obj).objects.using(db).get(pk=obj.pk)
 	
+def round_datetime_utc(timestamp):
+	"""Round to seconds and set zone to UTC."""
+	## sfdates are UTC to seconds precision but use a fixed-offset
+	## of +0000 (as opposed to a named tz)
+	timestamp = timestamp.replace(microsecond=0)
+	if DJANGO_14_PLUS:
+		timestamp= timestamp.replace(tzinfo=pytz.utc)
+	return timestamp
+
 
 class BasicSOQLTest(TestCase):
 	def setUp(self):
@@ -451,6 +462,8 @@ class BasicSOQLTest(TestCase):
 		"""
 		Unsupported bulk_create: "Errors should never pass silently."
 		"""
+		if not DJANGO_14:
+			self.skipTest('Django 1.3 has no bulk operations.')
 		objects = [Contact(last_name='sf_test a'), Contact(last_name='sf_test b')]
 		self.assertRaises(AssertionError, Contact.objects.bulk_create, objects)
 

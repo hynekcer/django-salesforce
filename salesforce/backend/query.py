@@ -25,7 +25,7 @@ from itertools import islice
 import requests
 import pytz
 
-from salesforce import auth, models, DJANGO_16_PLUS, DJANGO_17_PLUS
+from salesforce import auth, models, DJANGO_14_PLUS, DJANGO_16_PLUS, DJANGO_17_PLUS
 from salesforce.backend import compiler, sf_alias
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE
 
@@ -45,7 +45,10 @@ API_STUB = '/services/data/v31.0'
 # Values of seconds are with 3 decimal places in SF, but they are rounded to
 # whole seconds for the most of fields.
 SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
-DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
+if DJANGO_14_PLUS:
+	DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
+else:
+	DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 
 def quoted_string_literal(s, d):
 	"""
@@ -166,6 +169,16 @@ def prep_for_deserialize(model, record, using):
 				# Type of generic foreign key
 				simple_column, _ = x.column.split('.')
 				fields[x.name] = record[simple_column]['Type']
+			field_val = record[x.column]
+			db_type = x.db_type(connection=connections[using])
+			if(x.__class__.__name__ == 'DateTimeField' and field_val is not None):
+				d = datetime.datetime.strptime(field_val, SALESFORCE_DATETIME_FORMAT)
+				import pytz
+				d = d.replace(tzinfo=pytz.utc)
+				fields[x.name] = d.strftime(DJANGO_DATETIME_FORMAT)
+			elif (x.__class__.__name__ == 'TimeField' and field_val is not None
+					and not DJANGO_14 and field_val.endswith('Z')):
+				fields[x.name] = field_val[:-1]  # Fix time e.g. "23:59:59.000Z"
 			else:
 				# Normal fields
 				field_val = record[x.column]
@@ -211,8 +224,11 @@ def extract_values(query):
 						"Match name can miss only with an 'update_fields' argument."
 				continue
 		else:  # insert
-			assert len(query.objs) == 1, "bulk_create is not supported by Salesforce backend."
-			value = getattr(query.objs[0], field.attname)
+			if(DJANGO_14_PLUS):  # Django >= 1.4
+				assert len(query.objs) == 1, "bulk_create is not supported by Salesforce backend."
+				value = getattr(query.objs[0], field.attname)
+			else:   # Django == 1.3
+				value = query.values[index][1]
 			if isinstance(field, models.ForeignKey) and value == 'DEFAULT':
 				continue
 		[arg] = process_json_args([value])
