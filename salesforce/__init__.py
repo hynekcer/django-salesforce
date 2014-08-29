@@ -14,11 +14,12 @@ import logging
 import ssl
 
 import django
+DJANGO_14_PLUS = django.VERSION[:2] >= (1, 4)
 DJANGO_15_PLUS = django.VERSION[:2] >= (1, 5)
 DJANGO_16_PLUS = django.VERSION[:2] >= (1, 6)
 DJANGO_17_PLUS = django.VERSION[:2] >= (1, 7)
-if not django.VERSION[:2] >= (1, 4):
-	raise ImportError("Django 1.4 or higher is required for django-salesforce.")
+if not django.VERSION[:2] >= (1, 3):
+	raise ImportError("Django 1.3 or higher is required for django-salesforce.")
 
 log = logging.getLogger(__name__)
 

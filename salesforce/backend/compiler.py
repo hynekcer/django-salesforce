@@ -12,7 +12,7 @@ from django.db import models
 from django.db.models.sql import compiler, query, where, constants, AND, OR
 from django.db.models.sql.datastructures import EmptyResultSet
 
-from salesforce import DJANGO_15_PLUS, DJANGO_16_PLUS, DJANGO_17_PLUS
+from salesforce import DJANGO_14_PLUS, DJANGO_15_PLUS, DJANGO_16_PLUS, DJANGO_17_PLUS
 
 
 class SQLCompiler(compiler.SQLCompiler):
@@ -159,7 +159,7 @@ class SalesforceWhereNode(where.WhereNode):
 		else:
 			return result
 
-	DJANGO_14_EXACT = not DJANGO_15_PLUS
+	DJANGO_14_EXACT = DJANGO_14_PLUS and not DJANGO_15_PLUS
 	if DJANGO_14_EXACT:
 		# patched "django.db.models.sql.where.WhereNode.as_sql" from Django 1.4
 		def as_sql(self, qn, connection):
@@ -314,17 +314,17 @@ class SalesforceWhereNode(where.WhereNode):
 
 
 class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
-	def execute_sql(self, return_id=False):
-		assert not (return_id and len(self.query.objs) != 1)
-		self.return_id = return_id
-		cursor = self.connection.cursor(query=self.query)
-		for sql, params in self.as_sql():
-			cursor.execute(sql, params)
-		if not return_id:
-			return
-		return self.connection.ops.last_insert_id(cursor,
-				self.query.model._meta.db_table, self.query.model._meta.pk.column)
-
+	if(DJANGO_14_PLUS):
+		def execute_sql(self, return_id=False):
+			assert not (return_id and len(self.query.objs) != 1)
+			self.return_id = return_id
+			cursor = self.connection.cursor(query=self.query)
+			for sql, params in self.as_sql():
+				cursor.execute(sql, params)
+			if not return_id:
+				return
+			return self.connection.ops.last_insert_id(cursor,
+					self.query.model._meta.db_table, self.query.model._meta.pk.column)
 
 class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
 	pass
