@@ -15,20 +15,22 @@ from django.db import connections
 from django.db.models import Q, Avg, Count, Sum, Min, Max
 from django.test import TestCase
 from django.utils.unittest import skip, skipUnless
-from django.utils import timezone
 
 from salesforce.testrunner.example.models import (Account, Contact, Lead, User,
 		BusinessHours, ChargentOrder, CronTrigger, TestCustomExample,
 		Product, Pricebook, PricebookEntry,
 		GeneralCustomModel, Note, test_custom_db_table, test_custom_db_column)
-from salesforce import router, DJANGO_15_PLUS
+from salesforce import router, DJANGO_14_PLUS, DJANGO_15_PLUS
 from salesforce.backend import sf_alias
 import salesforce
+if DJANGO_14_PLUS:
+	from django.utils import timezone
+else:  # Django 1.3
+	import datetime
+	timezone = datetime.datetime
 
 import logging
 log = logging.getLogger(__name__)
-
-DJANGO_14_PLUS = django.VERSION[:2] >= (1,4)
 
 random_slug = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for x in range(32))
 sf_alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
@@ -462,7 +464,7 @@ class BasicSOQLTest(TestCase):
 		"""
 		Unsupported bulk_create: "Errors should never pass silently."
 		"""
-		if not DJANGO_14:
+		if not DJANGO_14_PLUS:
 			self.skipTest('Django 1.3 has no bulk operations.')
 		objects = [Contact(last_name='sf_test a'), Contact(last_name='sf_test b')]
 		self.assertRaises(AssertionError, Contact.objects.bulk_create, objects)

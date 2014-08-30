@@ -1,5 +1,6 @@
 # Django settings for testrunner project.
 import os
+from salesforce import DJANGO_14_PLUS
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -177,3 +178,8 @@ try:
 	from salesforce.testrunner.local_settings import *
 except ImportError:
 	pass
+
+if not DJANGO_14_PLUS:
+	LOGGING['filters']['require_debug_false'] = {}
+	USE_TZ = False
+	MIDDLEWARE_CLASSES = tuple(x for x in MIDDLEWARE_CLASSES if not 'clickjacking' in x)

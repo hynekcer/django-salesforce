@@ -16,7 +16,10 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db.backends import BaseDatabaseIntrospection
 from django.utils.datastructures import SortedDict
-from django.utils.encoding import force_text
+try:
+	from django.utils.encoding import force_text
+except ImportError:  # Django 1.3
+	from django.utils.encoding import force_unicode as force_text
 
 from salesforce.backend import compiler, query
 from salesforce import models, DJANGO_15_PLUS

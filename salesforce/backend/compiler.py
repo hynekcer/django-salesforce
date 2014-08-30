@@ -314,7 +314,8 @@ class SalesforceWhereNode(where.WhereNode):
 
 
 class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
-	if(DJANGO_14_PLUS):
+	# TODO hynekcer: coverage?
+	if DJANGO_14_PLUS:
 		def execute_sql(self, return_id=False):
 			assert not (return_id and len(self.query.objs) != 1)
 			self.return_id = return_id
