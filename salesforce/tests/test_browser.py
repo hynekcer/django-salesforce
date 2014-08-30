@@ -1,5 +1,6 @@
 from django.test import TestCase
 import django.contrib.auth
+from salesforce import DJANGO_14_PLUS
 
 
 class WebTest(TestCase):
@@ -21,4 +22,7 @@ class WebTest(TestCase):
 		response = self.client.post('/admin/example/lead/')
 		response = self.client.post('/admin/example/pricebook/')
 		response = self.client.post('/admin/')
-		self.assertIn('PricebookEntries', response.rendered_content)
+		if DJANGO_14_PLUS:
+			self.assertIn('PricebookEntries', response.rendered_content)
+		else:
+			self.assertIn('PricebookEntries', response.content)

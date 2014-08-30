@@ -50,10 +50,7 @@ API_STUB = '/services/data/v31.0'
 # Values of seconds are with 3 decimal places in SF, but they are rounded to
 # whole seconds for the most of fields.
 SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
-if DJANGO_14_PLUS:
-	DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
-else:
-	DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
+DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
 
 def quoted_string_literal(s, d):
 	"""
