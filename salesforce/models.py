@@ -26,6 +26,7 @@ from django.db.models import PROTECT, DO_NOTHING
 from salesforce.backend import manager
 from salesforce.fields import *  # modified django.db.models.CharField etc.
 from salesforce import fields
+from salesforce import DJANGO_14_PLUS
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,11 @@ class SalesforceModelBase(ModelBase):
 		supplied_db_table = getattr(attr_meta, 'db_table', None)
 		result = super(SalesforceModelBase, cls).__new__(cls, name, bases, attrs)
 		if models.Model not in bases and supplied_db_table is None:
-			result._meta.db_table = result._meta.concrete_model._meta.object_name
+			if DJANGO_14_PLUS:
+				result._meta.db_table = result._meta.concrete_model._meta.object_name
+			else:
+				# does not supports proxy models without explicit db_table
+				result._meta.db_table = name
 		return result
 
 	def add_to_class(cls, name, value):

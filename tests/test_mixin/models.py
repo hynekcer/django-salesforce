@@ -4,6 +4,7 @@ from django.conf import settings
 import salesforce
 from salesforce import models
 from salesforce.models import SalesforceModel
+from salesforce import DJANGO_14_PLUS
 
 # All demo models simplified for readability, except tested features
 
@@ -78,3 +79,5 @@ class ProxyContact(Contact):
 class Proxy2Contact(ProxyContact):
 	class Meta:
 		proxy = True
+		if not DJANGO_14_PLUS:
+			db_table = 'Contact'
