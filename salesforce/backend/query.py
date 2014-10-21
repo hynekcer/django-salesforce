@@ -18,6 +18,8 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import connections
 from django.db.models import query
 from django.db.models.sql import Query, RawQuery, constants, subqueries
+from django.db.models.query_utils import deferred_class_factory
+
 from itertools import islice
 
 import requests
@@ -32,7 +34,7 @@ else:  # Django 1.3
 	PY3 = False
 	assert sys.version_info[0] < 3
 from salesforce.backend import compiler, sf_alias
-from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE
+from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
 
 try:
 	from urllib.parse import urlencode
@@ -51,6 +53,8 @@ API_STUB = '/services/data/v31.0'
 # whole seconds for the most of fields.
 SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
+
+request_count = 0
 
 def quoted_string_literal(s, d):
 	"""
@@ -86,22 +90,19 @@ def process_json_args(args):
 		return conv.get(type(item), conv[str])(item, conv)
 	return tuple([_escape(x, json_conversions) for x in args])
 
-def reauthenticate(db_alias):
-	auth.expire_token(db_alias)
-	oauth = auth.authenticate(db_alias=db_alias)
-	return oauth['access_token']
-
 def handle_api_exceptions(url, f, *args, **kwargs):
 	"""Call REST API and handle exceptions
 	Params:
 		f:  requests.get or requests.post...
 		_cursor: sharing the debug information in cursor
 	"""
+	global request_count 
 	from salesforce.backend import base
 	kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', 3)}
 	kwargs_in.update(kwargs)
 	_cursor = kwargs_in.pop('_cursor', None)
 	log.debug('Request API URL: %s' % url)
+	request_count += 1
 	try:
 		response = f(url, *args, **kwargs_in)
 	# TODO some timeouts can be rarely raised as "SSLError: The read operation timed out"
@@ -111,7 +112,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
 		# Unauthorized (expired or invalid session ID or OAuth)
 		data = response.json()[0]
 		if(data['errorCode'] == 'INVALID_SESSION_ID'):
-			token = reauthenticate(db_alias=f.__self__.auth.db_alias)
+			token = auth.reauthenticate(db_alias=f.__self__.auth.db_alias)
 			if('headers' in kwargs):
 				kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
 			try:
@@ -152,7 +153,13 @@ def handle_api_exceptions(url, f, *args, **kwargs):
 	else:
 		raise base.SalesforceError('%s' % data, data, response, verbose)
 
-def prep_for_deserialize(model, record, using):
+def prep_for_deserialize(model, record, using, init_list=None):
+	"""
+	Convert a record from SFDC (decoded JSON) to dict(model string, pk, fields)
+	If fixes fields of some types. If names of required fields `init_list `are
+	specified, then only these fields are processed.
+	"""
+	from salesforce.backend import base
 	# TODO the parameter 'using' is not currently important.
 	attribs = record.pop('attributes')
 
@@ -166,7 +173,7 @@ def prep_for_deserialize(model, record, using):
 
 	fields = dict()
 	for x in model._meta.fields:
-		if not x.primary_key:
+		if not x.primary_key and (not init_list or x.name in init_list):
 			if x.column.endswith('.Type'):
 				# Type of generic foreign key
 				simple_column, _ = x.column.split('.')
@@ -190,7 +197,8 @@ def prep_for_deserialize(model, record, using):
 					fields[x.name] = field_val[:-1]  # Fix time e.g. "23:59:59.000Z"
 				else:
 					fields[x.name] = field_val
-
+	if init_list and set(init_list).difference(fields).difference([SF_PK]):
+		raise base.DatabaseError("Not found some expected fields")
 
 	return dict(
 		model	= '.'.join([app_label, model.__name__]),
@@ -251,7 +259,44 @@ class SalesforceQuerySet(query.QuerySet):
 		cursor.execute(sql, params)
 
 		pfd = prep_for_deserialize
-		for res in python.Deserializer(pfd(self.model, r, self.db) for r in cursor.results):
+
+		only_load = self.query.get_loaded_field_names()
+		load_fields = []
+		# If only/defer clauses have been specified,
+		# build the list of fields that are to be loaded.
+		if not only_load:
+			model_cls = self.model
+			init_list = None
+		else:
+			if DJANGO_16_PLUS:
+				fields = self.model._meta.concrete_fields
+				fields_with_model = self.model._meta.get_concrete_fields_with_model()
+			else:
+				fields = self.model._meta.fields
+				fields_with_model = self.model._meta.get_fields_with_model()
+			for field, model in fields_with_model:
+				if model is None:
+					model = self.model
+				try:
+					if field.name in only_load[model]:
+						# Add a field that has been explicitly included
+						load_fields.append(field.name)
+				except KeyError:
+					# Model wasn't explicitly listed in the only_load table
+					# Therefore, we need to load all fields from this model
+					load_fields.append(field.name)
+
+			init_list = []
+			skip = set()
+			for field in fields:
+				if field.name not in load_fields:
+					skip.add(field.attname)
+				else:
+					init_list.append(field.name)
+			model_cls = deferred_class_factory(self.model, skip)
+
+		field_names = self.query.get_loaded_field_names()
+		for res in python.Deserializer(pfd(model_cls, r, self.db, init_list) for r in cursor.results):
 			# Store the source database of the object
 			res.object._state.db = self.db
 			# This object came from the database; it's not being added.
@@ -285,7 +330,7 @@ class SalesforceRawQuery(RawQuery):
 		self.cursor.execute(self.sql, self.params)
 
 	def __repr__(self):
-		return "<SalesforceRawQuery: %r>" % (self.sql % tuple(self.params))
+		return "<SalesforceRawQuery: %s; %r>" % (self.sql, tuple(self.params))
 
 class SalesforceQuery(Query):
 	"""
@@ -363,7 +408,7 @@ class CursorWrapper(object):
 		elif isinstance(self.query, subqueries.DeleteQuery):
 			response = self.execute_delete(self.query)
 		else:
-			raise base.DatabaseError("Unsupported query: %s" % self.query)
+			raise base.DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
 
 		# the encoding is detected automatically, e.g. from headers
 		if(response and response.text):
@@ -398,19 +443,19 @@ class CursorWrapper(object):
 		processed_sql = str(q) % process_args(args)
 		cmd = 'query' if not getattr(self.query, 'is_query_all', False) else 'queryAll'
 		url = u'{base}{api}/{cmd}?{query_str}'.format(
-				base=self.oauth['instance_url'], api=API_STUB, cmd=cmd,
+				base=self.session.auth.instance_url, api=API_STUB, cmd=cmd,
 				query_str=urlencode(dict(q=processed_sql)),
 		)
 		log.debug(processed_sql)
 		return handle_api_exceptions(url, self.session.get, _cursor=self)
 
 	def query_more(self, nextRecordsUrl):
-		url = u'%s%s' % (self.oauth['instance_url'], nextRecordsUrl)
+		url = u'%s%s' % (self.session.auth.instance_url, nextRecordsUrl)
 		return handle_api_exceptions(url, self.session.get, _cursor=self)
 
 	def execute_insert(self, query):
 		table = query.model._meta.db_table
-		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/' % table)
+		url = self.session.auth.instance_url + API_STUB + ('/sobjects/%s/' % table)
 		headers = {'Content-Type': 'application/json'}
 		post_data = extract_values(query)
 
@@ -427,7 +472,7 @@ class CursorWrapper(object):
 		else:
 			pk = query.where.children[0].children[0][-1]
 		assert pk
-		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/%s' % (table, pk))
+		url = self.session.auth.instance_url + API_STUB + ('/sobjects/%s/%s' % (table, pk))
 		headers = {'Content-Type': 'application/json'}
 		post_data = extract_values(query)
 		log.debug('UPDATE %s(%s)%s' % (table, pk, post_data))
@@ -450,7 +495,7 @@ class CursorWrapper(object):
 				return pk
 		pk = recurse_for_pk(self.query.where.children)
 		assert pk
-		url = self.oauth['instance_url'] + API_STUB + ('/sobjects/%s/%s' % (table, pk))
+		url = self.session.auth.instance_url + API_STUB + ('/sobjects/%s/%s' % (table, pk))
 
 		log.debug('DELETE %s(%s)' % (table, pk))
 		return handle_api_exceptions(url, self.session.delete, _cursor=self)

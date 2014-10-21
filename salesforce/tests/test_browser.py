@@ -1,5 +1,6 @@
 from django.test import TestCase
 import django.contrib.auth
+from salesforce.testrunner.example.models import Account
 from salesforce import DJANGO_14_PLUS
 
 
@@ -14,9 +15,13 @@ class WebTest(TestCase):
 		user.save()
 		self.client.login(username='fredsu', password='passwd')
 
+		account = Account(Name = 'sf_test account')
+		account.save()
+
 		response = self.client.get('/')
 		response = self.client.get('/search/')
-		response = self.client.get('/search/')
+		response = self.client.post('/search/', {'query': 'test account'})
+		self.assertIn(b'sf_test account', response.content)
 		response = self.client.post('/admin/example/account/')
 		response = self.client.post('/admin/example/contact/')
 		response = self.client.post('/admin/example/lead/')
@@ -26,3 +31,5 @@ class WebTest(TestCase):
 			self.assertIn('PricebookEntries', response.rendered_content)
 		else:
 			self.assertIn('PricebookEntries', response.content)
+		account.delete()
+		user.delete()

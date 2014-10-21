@@ -62,10 +62,15 @@ Quick Start
    ``python manage.py inspectdb --database=salesforce`` and simplify it
    to what you need.
 
-8. If you want to use the model in the Django admin interface, use a
-   ModelAdmin that extends ``salesforce.admin.RoutedModelAdmin``
+8. You're all done! Just use your model like a normal Django model.
 
-9. You're all done! Just use your model like a normal Django model.
+Primary Key
+-----------
+Primary keys are added to models only automatically,
+because SFDC doesn't allow to define custom primary key. The lowercase name of
+primary key `id` can be configured globally for the project in its settings by
+`SF_PK='id'`. The backward compatible name `Id` is useful only for old projects,
+though it will stay as the default variant until `django-salesforce>=0.5`.
 
 Foreign Key Support
 -------------------
@@ -177,6 +182,12 @@ Advanced usage
    name ``Contact`` and all tables that are prefixed with ``Account``. This
    filter works with all supported database types.
 
+-  **Inheritance from multiple abstract models** is very useful for Salesforce,
+   because the same sets of fields are frequently used in many models, but with
+   a hierarchy with one ancestor would be too deep, rigid and complicated.
+   Also proxy models and mixins are supported.
+
+
 Caveats
 -------
 
@@ -201,3 +212,55 @@ here are the potential pitfalls and unimplemented operations:
 -  **Database Sync** — ``syncdb`` will only create new databases in non-SF
    databases (useful for unit tests); SFDC classes are assumed to already
    exist with the appropriate permissions.
+
+Experimental Features
+---------------------
+
+-  The requirement that "ModelAdmin should extend
+   ``salesforce.admin.RoutedModelAdmin``" is probably not important any more
+   in your custom admin.py. It is still required if you use multiple Salesforce
+   databases and multiple instances of AdminSite etc.
+
+-  **Dynamic authorization** - Expect that you have another application for
+   Salesforce e.g. a mobile application, where is still know the
+   `Access Token <https://www.salesforce.com/us/developer/docs/api_rest/Content/quickstart_oauth.htm>`
+   for a current user. You want to send a request 
+   to your django-salesforce application to do anything under credentials of that current user.
+   Then is not necessary to save any credentials for SFDC into Django settings.
+   It is not solved, how you get the token or how you send it to Django
+   (usually in the `Authorization:` header).
+
+   Set this to your ``DATABASES`` setting::
+
+    'salesforce': {
+        'ENGINE': 'salesforce.backend',
+        'HOST': 'https://your-site.salesforce.com',
+        'CONSUMER_KEY': '.',
+        'CONSUMER_SECRET': '.',
+        'USER': 'dynamic auth',
+        'PASSWORD': '.',
+    }
+
+
+   If the SFDC data server should be static then the value `HOST` should be its
+   URL. (not URL of login server, because the data server url can be also used
+   for login.)
+   Items with `'.'` value are not important for `dynamic auth`, but can not be
+   empty due to some validity checks.
+
+   Create some middleware that is called at the beginning of request::
+
+    from django.db import connections
+
+        # get 'access_token' by yourself... and
+        # put it into salesforce connection
+        connections['salesforce'].sf_session.auth.dynamic_start(access_token)
+        # or also with dynamic `instance_url`
+        connections['salesforce'].sf_session.auth.dynamic_start(access_token, instance_url)
+
+   Forget the access token at the end of request::
+
+        connections['salesforce'].sf_session.auth.dynamic_end()
+
+   SFDC can be used with a normal static auth before dynamic_start and after
+   dynamic_end.
