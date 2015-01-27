@@ -36,3 +36,11 @@ class DatabaseCreation(BaseDatabaseCreation):
             log.info("No test database to destroy for alias '%s'%s...",
                      self.connection.alias, test_db_repr)
         self.connection.settings_dict['NAME'] = old_database_name
+
+    def test_db_signature(self):
+        settings_dict = self.connection.settings_dict
+        return (
+            settings_dict['HOST'],
+            settings_dict['ENGINE'],
+            settings_dict['USER']
+        )
