@@ -5,11 +5,20 @@
 # See LICENSE.md for details
 #
 
-from salesforce import models
+from salesforce import models, DJANGO_14_PLUS
 from salesforce.models import SalesforceModel as SalesforceModelParent
 
 import django
 from django.conf import settings
+
+if DJANGO_14_PLUS:
+	from django.utils.encoding import python_2_unicode_compatible
+else:
+	def python_2_unicode_compatible(klass):
+		klass.__unicode__ = klass.__str__
+		klass.__str__ = lambda self: self.__unicode__().encode('utf-8')
+		return klass
+
 
 SALUTATIONS = [
 	'Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'
