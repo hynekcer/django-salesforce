@@ -49,3 +49,10 @@ class DatabaseOperations(BaseDatabaseOperations):
 
 	def last_insert_id(self, cursor, db_table, db_column):
 		return cursor.lastrowid
+
+	# This SQL is not important because we control the db from the compiler
+	# but anything must exist
+	def bulk_insert_sql(self, fields, num_values):
+		items_sql = "(%s)" % ", ".join(["%s"] * len(fields))
+		return "VALUES " + ", ".join([items_sql] * num_values)
+

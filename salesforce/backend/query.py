@@ -211,39 +211,40 @@ def prep_for_deserialize(model, record, using, init_list=None):
 def extract_values(query):
 	"""
 	Extract values from insert or update query.
+	Supports bulk_create
 	"""
-	d = dict()
+	ret = []
 	fields = query.model._meta.fields
-	for index in range(len(fields)):
-		field = fields[index]
-		if (field.get_internal_type() == 'AutoField' or
-				isinstance(query, subqueries.UpdateQuery) and (getattr(field, 'sf_read_only', 0) & NOT_UPDATEABLE) != 0 or
-				isinstance(query, subqueries.InsertQuery) and (getattr(field, 'sf_read_only', 0) & NOT_CREATEABLE) != 0):
-			continue
-		if(isinstance(query, subqueries.UpdateQuery)):
-			# update
-			value_or_empty = [value for qfield, model, value in query.values if qfield.name == field.name]
-			if value_or_empty:
-				[value] = value_or_empty
+	for row in query.values if isinstance(query, subqueries.UpdateQuery) else query.objs:
+		d = dict()
+		for index in range(len(fields)):
+			field = fields[index]
+			if (field.get_internal_type() == 'AutoField' or
+					isinstance(query, subqueries.UpdateQuery) and (getattr(field, 'sf_read_only', 0) & NOT_UPDATEABLE) != 0 or
+					isinstance(query, subqueries.InsertQuery) and (getattr(field, 'sf_read_only', 0) & NOT_CREATEABLE) != 0):
+				continue
+			if(isinstance(query, subqueries.UpdateQuery)):
+				# update
+				value_or_empty = [value for qfield, model, value in query.values if qfield.name == field.name]
+				if value_or_empty:
+					[value] = value_or_empty
+				else:
+					assert len(query.values) < len(fields), \
+							"Match name can miss only with an 'update_fields' argument."
+					continue
 			else:
-				assert len(query.values) < len(fields), \
-						"Match name can miss only with an 'update_fields' argument."
+				# insert
+				value = getattr(row, field.attname)
+			# The 'DEFAULT' is a backward compatibility name.
+			if isinstance(field, (models.ForeignKey, models.BooleanField, models.DecimalField)):
+				if value in ('DEFAULT', 'DEFAULTED_ON_CREATE'):
+					continue
+			if isinstance(value, models.DefaultedOnCreate):
 				continue
-		else:
-			# insert
-			# TODO bulk insert
-			assert len(query.objs) == 1, "bulk_create is not supported by Salesforce REST API"
-			value = getattr(query.objs[0], field.attname)
-		# The 'DEFAULT' is a backward compatibility name.
-		if isinstance(field, (models.ForeignKey, models.BooleanField, models.DecimalField)):
-			if value in ('DEFAULT', 'DEFAULTED_ON_CREATE'):
-				continue
-		if isinstance(value, models.DefaultedOnCreate):
-			continue
-		[arg] = process_json_args([value])
-		d[field.column] = arg
-	#print("postdata : %s" % d)
-	return d
+			[arg] = process_json_args([value])
+			d[field.column] = arg
+		ret.append(d)
+	return ret
 
 class SalesforceRawQuerySet(query.RawQuerySet):
 	def __len__(self):
@@ -448,6 +449,10 @@ class CursorWrapper(object):
 			elif('success' in data and 'id' in data):
 				self.lastrowid = data['id']
 				return
+			elif data['hasErrors'] == False:
+				# save id from bulk_create even if Django don't use it
+				self.lastrowid = [item['result']['id'] for item in data['results']]
+				return
 			# something we don't recognize
 			else:
 				raise base.DatabaseError(data)
@@ -479,10 +484,18 @@ class CursorWrapper(object):
 
 	def execute_insert(self, query):
 		table = query.model._meta.db_table
-		url = self.session.auth.instance_url + API_STUB + ('/sobjects/%s/' % table)
+		url_pattern = self.session.auth.instance_url + API_STUB + '/sobjects/%s'
 		headers = {'Content-Type': 'application/json'}
 		post_data = extract_values(query)
-
+		if len(post_data) == 1:
+			url = url_pattern % table
+			post_data = post_data[0]
+		else:
+			url = self.session.auth.instance_url + API_STUB + '/composite/batch'
+			ver_number = API_STUB.split('/')[-1]
+			post_data = {'batchRequests': [
+				{'method' : 'POST', 'url' : '%s/sobjects/%s' % (ver_number, table), 'richInput': row}
+				for row in post_data]}
 		log.debug('INSERT %s%s' % (table, post_data))
 		return handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data), _cursor=self)
 
