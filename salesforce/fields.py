@@ -6,9 +6,41 @@
 #
 
 """
-Adds support for Salesforce primary keys.
+Adds support for Salesforce primary keys, '__c' names, read-only fields.
+
+Primary keys
+
+Primary keys are assigned by the database as strings (Salesforce)
+or numbers (other db).
+
+The Python name of a primary key can be 'id' like in Django or 'Id' for
+old projects or projects that prefer the original CamelCase internal API
+names, e.g. because these projects must combine more programming languages.
+
+Internal names of database columns are case sensitive in this project,
+because they are used as dictionary keys. (even though SFDC API is case
+insensitive)
+
+Numeric fields
+
+All numeric fields in the Salesforce database are saved in doble precision
+in the range
+     - 10 ** Length  <=  x  <  10 ** Length
+where "Length" is the field attribute in SFDC.
+The smallest number not equal to zero is +- 1E-130.
+The attribute "Decimal Places" is not important for SFDC API, it is used only
+by the user interface for rounding the input and output. The exact values
+are still displayed in SFDC edit forms if a higher precision was saved by API.
+There is not difference between Numeric, Currency and Percent type in API,
+except the visual representation with the currency or percent symbol.
+All conversions between double and string (JSON) are reversible and the correct
+rounding is preserved (thanks to the current libraries used in the latest SFDC,
+Javascript and Python 2.7 or higher)
+Numbers could be rendered with up to 16 or 17 significant digits if no rounding
+has ben used ever.
 """
 
+from decimal import Decimal
 import warnings
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -156,12 +188,50 @@ class TextField(SfField, models.TextField):
 class IntegerField(SfField, models.IntegerField):
     """IntegerField with sf_read_only attribute for Salesforce."""
     pass
+
+class BigIntegerField(SfField, models.BigIntegerField):
+    """BigIntegerField with sf_read_only attribute for Salesforce."""
+    # important for other database backends, e.g. in tests
+    # The biggest exact value is +-(2 ** 53 -1 ), approx. 9.007E15
+    pass
+
 class SmallIntegerField(SfField, models.SmallIntegerField):
     """SmallIntegerField with sf_read_only attribute for Salesforce."""
+    # not an important type
     pass
+
+class DecimalField(SfField, models.DecimalField):
+    """
+    DecimalField with sf_read_only attribute for Salesforce.
+
+    Salesforce has only one numeric type xsd:double, but no integer.
+    Even a numeric field with declared zero decimal_places can contain
+    pi=3.14159265358979 in the database accidentally, but if also the value
+    is integer,then it is without '.0'.
+    DecimalField is the default numeric type used by itrospection inspectdb.
+    """
+    def to_python(self, value):
+        if str(value) == 'DEFAULTED_ON_CREATE':
+            return value
+        ret = super(DecimalField, self).to_python(value)
+        if ret is not None and self.decimal_places == 0:
+            # this is because Salesforce has no numeric integer type
+            if ret == int(ret):
+                ret = Decimal(int(ret))
+        return ret
+
+class FloatField(SfField, models.FloatField):
+    """FloatField for Salesforce.
+
+    Float in Python. The same as DecimalField in the database.
+    """
+    pass
+
+
 class BooleanField(SfField, models.BooleanField):
     """BooleanField with sf_read_only attribute for Salesforce."""
     def __init__(self, default=False, **kwargs):
+        # value null not allowed by Salesforce for boolean
         super(BooleanField, self).__init__(default=default, **kwargs)
 
     def to_python(self, value):
@@ -169,14 +239,6 @@ class BooleanField(SfField, models.BooleanField):
             return value
         else:
             return super(BooleanField, self).to_python(value)
-
-
-class DecimalField(SfField, models.DecimalField):
-    """DecimalField with sf_read_only attribute for Salesforce."""
-    def to_python(self, value):
-        if str(value) == 'DEFAULTED_ON_CREATE':
-            return value
-        return super(DecimalField, self).to_python(value)
 
 
 class DateTimeField(SfField, models.DateTimeField):
