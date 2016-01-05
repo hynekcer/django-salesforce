@@ -361,3 +361,7 @@ class Attachment(models.Model):
 class Task(models.Model):
     who = models.ForeignKey(Lead, on_delete=models.DO_NOTHING, blank=True, null=True)  # Reference to tables [Contact, Lead]
     what = models.ForeignKey(Account, related_name='task_what_set', on_delete=models.DO_NOTHING, blank=True, null=True)  # Refer
+
+class Campaign(models.Model):
+    name = models.CharField(max_length=80)
+    number_sent = models.DecimalField(max_digits=18, decimal_places=0, verbose_name='Num Sent', blank=True, null=True)
