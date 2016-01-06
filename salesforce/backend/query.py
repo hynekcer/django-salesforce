@@ -65,29 +65,25 @@ def quoted_string_literal(s):
     except TypeError as e:
         raise NotImplementedError("Cannot quote %r objects: %r" % (type(s), s))
 
-def process_args(args):
+def arg_to_soql(arg):
     """
-    Perform necessary quoting on the arg list.
+    Perform necessary SOQL quoting on the arg.
     """
-    def _escape(item, conv):
-        if(isinstance(item, models.SalesforceModel)):
-            return conv[models.SalesforceModel](item)
-        if(isinstance(item, decimal.Decimal)):
-            return conv[decimal.Decimal](item)
-        return conv.get(type(item), conv[str])(item)
-    return tuple([_escape(x, sql_conversions) for x in args])
+    if(isinstance(arg, models.SalesforceModel)):
+        return sql_conversions[models.SalesforceModel](arg)
+    if(isinstance(arg, decimal.Decimal)):
+        return sql_conversions[decimal.Decimal](arg)
+    return sql_conversions.get(type(arg), sql_conversions[str])(arg)
 
-def process_json_args(args):
+def arg_to_sf(arg):
     """
-    Perform necessary JSON quoting on the arg list.
+    Perform necessary JSON conversion on the arg.
     """
-    def _escape(item, conv):
-        if(isinstance(item, models.SalesforceModel)):
-            return conv[models.SalesforceModel](item)
-        if(isinstance(item, decimal.Decimal)):
-            return conv[decimal.Decimal](item)
-        return conv.get(type(item), conv[str])(item)
-    return tuple([_escape(x, json_conversions) for x in args])
+    if(isinstance(arg, models.SalesforceModel)):
+        return json_conversions[models.SalesforceModel](arg)
+    if(isinstance(arg, decimal.Decimal)):
+        return json_conversions[decimal.Decimal](arg)
+    return json_conversions.get(type(arg), json_conversions[str])(arg)
 
 def handle_api_exceptions(url, f, *args, **kwargs):
     """Call REST API and handle exceptions
@@ -240,8 +236,7 @@ def extract_values(query):
                 continue
         if isinstance(value, models.DefaultedOnCreate):
             continue
-        [arg] = process_json_args([value])
-        d[field.column] = arg
+        d[field.column] = arg_to_sf(value)
     #print("postdata : %s" % d)
     return d
 
@@ -464,7 +459,7 @@ class CursorWrapper(object):
             self.results = iter([])
 
     def execute_select(self, q, args):
-        processed_sql = str(q) % process_args(args)
+        processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
         cmd = 'query' if not getattr(self.query, 'is_query_all', False) else 'queryAll'
         url = u'{base}{api}/{cmd}?{query_str}'.format(
                 base=self.session.auth.instance_url, api=API_STUB, cmd=cmd,
