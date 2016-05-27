@@ -9,6 +9,8 @@ Code at lower level than DB API should be also here.
 from collections import namedtuple
 import requests
 import socket
+import time
+import weakref
 
 from django.conf import settings
 from django.utils.six import PY3
@@ -40,7 +42,7 @@ class Error(Exception if PY3 else StandardError):
 
 
 class InterfaceError(Error):
-    pass
+    pass  # should be raised directly
 
 
 class DatabaseError(Error):
@@ -88,22 +90,208 @@ class SalesforceError(DatabaseError):
                      response.__dict__)
 
 
-class Connection(object):
-    # close and commit can be safely ignored because everything is
-    # committed automatically and REST is stateles.
+def standard_errorhandler(connection, cursor, errorclass, errorvalue):
+    "The errorhandler can be also used for warnings reporting"
+    if cursor:
+        cursor.messages.append(errorclass, errorvalue)
+    elif connection:
+        connection.messages.append(errorclass, errorvalue)
+    else:
+        pass  # maybe raise special
+    if isinstance(errorclass, Error) and (isinstance(errorclass, InterfaceError) or
+                                          filter(errorclass, errorvalue)):
+        raise errorclass(errorvalue)
+# ---
+
+
+CursorDescription = namedtuple(
+    'CursorDescription',
+    'name, type_code, display_size, internal_size, precision, scale, null_ok'
+)
+
+# def date(year, month, day):
+#    return datetime.date(year, month, day)
+#
+# def time(hour, minute, second):
+#    return datetime.time(hour, minute, second)
+#
+# def timestamp(year, month, day, hour, minute, second):
+#    return datetime.datetime(year, month, day, hour, minute, second)
+#
+# def DateFromTicks(ticks):
+#     return Date(*time.localtime(ticks)[:3])
+#
+# def TimeFromTicks(ticks):
+#     return Time(*time.localtime(ticks)[3:6])
+#
+# def TimestampFromTicks(ticks):
+#     return Timestamp(*time.localtime(ticks)[:6])
+#
+# class DBAPITypeObject:
+#     def __init__(self,*values):
+#         self.values = values
+#     def __cmp__(self,other):
+#         if other in self.values:
+#             return 0
+#         if other < self.values:
+#             return 1
+#         else:
+#             return -1
+
+TODO = ['TODO']
+
+
+class Cursor(object):
+
+    # DB API methods  (except private "_*" names)
+
+    def __init__(self, connection):
+        # DB API attributes
+        self.description = None
+        self.rowcount = None
+        self.lastrowid = None
+        self.messages = []
+        # static
+        self.arraysize = 1
+        # other
+        self.connection = connection
+        # self.connection = weakref.proxy(connection)
+
+    def err_hand(self, errorclass, errorvalue):
+        "call the errorhandler"
+        self.connection.errorhandler(self.connection, self.cursor, errorclass, errorvalue)
+
+    def _check(self):
+        if not self.connection:
+            raise InterfaceError("Cursor Closed")
+
+    def _clean(self):
+        self.description = None
+        self.rowcount = -1
+        self.lastrowid = None
+        self.messages = []
+        self._check()
+
     def close(self):
+        self.connection = None
+
+    def execute(self, operation, parameters):
+        self._clean()
+        sqltype = operation.split(None, 1)[0].upper()
+        #TODO
+        import pdb; pdb.set_trace()
+        if TODO == 'SELECT':
+            self.description = ()
+        self.rowcount = TODO
+
+    def executemany(self, operation, seq_of_parameters):
+        self._clean()
+        for param in seq_of_parameters:
+            self.execute(operation, param)
+
+    def fetchone(self):
+        self._check()
+        TODO
+
+    def fetchmany(self, size=None):
+        # size by SF
+        # size = size or cursor.arraysize
+        self._check()
+        for x in TODO:
+            pass
+
+    def fetchall(self):
+        self._check()
+        for x in TODO:
+            pass
+
+    def setinputsizes(self):
         pass
+
+    def setoutputsize(size, column=None):
+        pass
+
+    # other methods
+
+        #   (name=,         # req
+        #   type_code=,     # req
+        #   display_size=,
+        #   internal_size=,
+        #   precision=,
+        #   scale=,
+        #   null_ok=)
+
+
+class Connection(object):
+    """
+    params:
+            connection params ...,
+            errorhandler: function with following arguments
+                    ``errorhandler(connection, cursor, errorclass, errorvalue)``
+            use_introspection: bool
+    """
+    # close and commit can be safely ignored because everything is
+    # committed automatically and REST is stateles. They are
+    # unconditionally required by Django 1.6+.
+
+    Error = Error
+    InterfaceError = InterfaceError
+    DatabaseError = DatabaseError
+    DataError = DataError
+    OperationalError = OperationalError
+    IntegrityError = IntegrityError
+    InternalError = InternalError
+    ProgrammingError = ProgrammingError
+    NotSupportedError = NotSupportedError
+
+    # DB API methods
+
+    def __init__(self, **params):
+        self.errorhandler = params.pop('errorhandler', standard_errorhandler)
+        self.use_introspection = params.pop('use_introspection', True)
+        #...
+        self._connection = True  #...
+
+    def close(self):
+        self._check()
+        self._connection = None
+        print("close..")
 
     def commit(self):
-        pass
+        self._check()
 
     def rollback(self):
+        self._check()
         log.info("Rollback is not implemented.")
+
+    def cursor(self):
+        self._check()
+        print("cursor ???")
+        return Cursor(self)
+
+    # other methods
+
+    def _check(self):
+        if not self._connection:
+            raise InterfaceError("Connection Closed")
+
+    def err_hand(self, errorclass, errorvalue):
+        "call the errorhandler"
+        self.errorhandler(self, None, errorclass, errorvalue)
+
+    def put_metadata(self, data):
+        """
+        Put metadata from models to prefill metadate cache, insted of introspection.
+        It is important for:
+            relationship names
+            Date, Time, Timestamp
+        """
+        pass
 
 
 # DB API function
 def connect(**params):
-    return Connection()
+    return Connection(**params)
 
 
 # LOW LEVEL
