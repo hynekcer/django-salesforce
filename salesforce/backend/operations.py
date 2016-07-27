@@ -67,6 +67,14 @@ class DatabaseOperations(BaseDatabaseOperations):
             return value
         return django.db.backends.utils.format_number(value, max_digits, decimal_places)
 
+    def get_db_converters(self, expression):
+        super(DatabaseOperations, self).get_db_converters(expression)
+        converters = super(DatabaseOperations, self).get_db_converters(expression)
+        # import pdb; pdb.set_trace()
+        # if False:
+        #     converters.append(...)
+        return converters
+
     def bulk_batch_size(self, fields, objs):
         return BULK_BATCH_SIZE
 
