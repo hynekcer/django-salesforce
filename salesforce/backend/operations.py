@@ -6,7 +6,6 @@
 #
 
 import itertools
-import re
 
 import django.db.backends.utils
 from django.utils.deconstruct import deconstructible
@@ -21,6 +20,8 @@ BULK_BATCH_SIZE = 200 if salesforce.backend.driver.beatbox else 25
 """
 Default database operations, with unquoted names.
 """
+
+
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "salesforce.backend.compiler"
 
@@ -87,6 +88,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         def bulk_insert_sql(self, fields, num_values):
             items_sql = "(%s)" % ", ".join(["%s"] * len(fields))
             return "VALUES " + ", ".join([items_sql] * num_values)
+
 
 @deconstructible
 class DefaultedOnCreate(object):

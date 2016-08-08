@@ -11,14 +11,12 @@ Salesforce object manager.
 Use a custom QuerySet to generate SOQL queries and results.
 """
 
-import warnings
-from django.db import connections
 from django.conf import settings
 from django.db.models import manager
-from django.db.models.query import RawQuerySet
 from django.db.utils import DEFAULT_DB_ALIAS
 
 from salesforce import router
+
 
 class SalesforceManager(manager.Manager):
     use_for_related_fields = True
@@ -49,7 +47,8 @@ class SalesforceManager(manager.Manager):
         if router.is_sf_database(self.db):
             from salesforce.backend import query
             q = query.SalesforceRawQuery(raw_query, self.db, params)
-            return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q, params=params, using=self.db)
+            return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q,
+                                               params=params, using=self.db)
         else:
             return super(SalesforceManager, self).raw(raw_query, params, *args, **kwargs)
 

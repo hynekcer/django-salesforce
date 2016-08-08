@@ -58,14 +58,14 @@ from salesforce.backend.operations import DefaultedOnCreate
 # in Django 1.7+, because their parameters only describe fixed nature of SF
 # standard objects that can not be modified no ways by no API or spell.
 
-FULL_WRITABLE  = 0
+FULL_WRITABLE = 0
 NOT_UPDATEABLE = 1
 NOT_CREATEABLE = 2
 READ_ONLY = 3  # (NOT_UPDATEABLE & NOT_CREATEABLE)
 DEFAULTED_ON_CREATE = DefaultedOnCreate()
 
 SF_PK = getattr(settings, 'SF_PK', 'id')
-if not SF_PK in ('id', 'Id'):
+if SF_PK not in ('id', 'Id'):
     raise ImproperlyConfigured("Value of settings.SF_PK must be 'id' or 'Id' or undefined.")
 
 
@@ -95,19 +95,24 @@ class SalesforceAutoField(fields.AutoField):
         # we can't require "self.auto_created==True" due to backward compatibility
         # with old migrations created before v0.6. Other conditions are enough.
         if name != SF_PK or not self.primary_key:
-            raise ImproperlyConfigured("SalesforceAutoField must be a primary"
-                    "key with the name '%s' (as configured by settings)." % SF_PK)
+            raise ImproperlyConfigured("SalesforceAutoField must be a primary key"
+                                       "with the name '%s' (as configured by settings)." % SF_PK)
         if cls._meta.has_auto_field:
-            if (type(self) == type(cls._meta.auto_field) and self.model._meta.abstract and
+            if (type(self) is type(cls._meta.auto_field) and self.model._meta.abstract and
                     cls._meta.auto_field.name == SF_PK):
                 # Creating the Model that inherits fields from more abstract classes
                 # with the same default SalesforceAutoFieldy The second one can be
                 # ignored.
                 return
             else:
-                raise ImproperlyConfigured("The model %s can not have more than one AutoField, "
-                        "but currently: (%s=%s, %s=%s)"
-                        % (cls, cls._meta.auto_field.name, cls._meta.auto_field, name, self))
+                raise ImproperlyConfigured(
+                    "The model %s can not have more than one AutoField, "
+                    "but currently: (%s=%s, %s=%s)" % (
+                        cls,
+                        cls._meta.auto_field.name, cls._meta.auto_field,
+                        name, self
+                    )
+                )
         super(SalesforceAutoField, self).contribute_to_class(cls, name)
         cls._meta.has_auto_field = True
         cls._meta.auto_field = self
@@ -174,12 +179,18 @@ class SfField(models.Field):
 class CharField(SfField, models.CharField):
     """CharField with sf_read_only attribute for Salesforce."""
     pass
+
+
 class EmailField(SfField, models.EmailField):
     """EmailField with sf_read_only attribute for Salesforce."""
     pass
+
+
 class URLField(SfField, models.URLField):
     """URLField with sf_read_only attribute for Salesforce."""
     pass
+
+
 class TextField(SfField, models.TextField):
     """TextField with sf_read_only attribute for Salesforce."""
     pass
@@ -189,16 +200,19 @@ class IntegerField(SfField, models.IntegerField):
     """IntegerField with sf_read_only attribute for Salesforce."""
     pass
 
+
 class BigIntegerField(SfField, models.BigIntegerField):
     """BigIntegerField with sf_read_only attribute for Salesforce."""
     # important for other database backends, e.g. in tests
     # The biggest exact value is +-(2 ** 53 -1 ), approx. 9.007E15
     pass
 
+
 class SmallIntegerField(SfField, models.SmallIntegerField):
     """SmallIntegerField with sf_read_only attribute for Salesforce."""
     # not an important type
     pass
+
 
 class DecimalField(SfField, models.DecimalField):
     """
@@ -219,6 +233,7 @@ class DecimalField(SfField, models.DecimalField):
             if ret == int(ret):
                 ret = Decimal(int(ret))
         return ret
+
 
 class FloatField(SfField, models.FloatField):
     """FloatField for Salesforce.
@@ -244,9 +259,13 @@ class BooleanField(SfField, models.BooleanField):
 class DateTimeField(SfField, models.DateTimeField):
     """DateTimeField with sf_read_only attribute for Salesforce."""
     pass
+
+
 class DateField(SfField, models.DateField):
     """DateField with sf_read_only attribute for Salesforce."""
     pass
+
+
 class TimeField(SfField, models.TimeField):
     """TimeField with sf_read_only attribute for Salesforce."""
     pass
@@ -260,7 +279,7 @@ class ForeignKey(SfField, models.ForeignKey):
             on_delete = args[1].__name__
         else:
             on_delete = kwargs.get('on_delete', models.CASCADE).__name__
-        if not on_delete in ('PROTECT', 'DO_NOTHING'):
+        if on_delete not in ('PROTECT', 'DO_NOTHING'):
             # The option CASCADE (currently fails) would be unsafe after a fix
             # of on_delete because Cascade delete is not usually enabled in SF
             # for safety reasons for most fields objects, namely for Owner,
@@ -268,9 +287,10 @@ class ForeignKey(SfField, models.ForeignKey):
             # by SF even with DO_NOTHING in Django, e.g. for
             # Campaign/CampaignMember
             related_object = args[0]
-            warnings.warn("Only foreign keys with on_delete = PROTECT or "
-                    "DO_NOTHING are currently supported, not %s related to %s"
-                    % (on_delete, related_object))
+            warnings.warn(
+                "Only foreign keys with on_delete = PROTECT or "
+                "DO_NOTHING are currently supported, not %s related to %s"
+                % (on_delete, related_object))
         super(ForeignKey, self).__init__(*args, **kwargs)
 
     def get_attname(self):
