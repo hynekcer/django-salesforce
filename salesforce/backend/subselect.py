@@ -24,10 +24,10 @@ RESERVED_WORDS = set((
     'AND, ASC, DESC, EXCLUDES, FIRST, FROM, GROUP, HAVING, '
     'IN, INCLUDES, LAST, LIKE, LIMIT, NOT, NULL, NULLS, '
     'OR, SELECT, WHERE, WITH'
-    ).split(', '))
+).split(', '))
 AGGREGATION_WORDS = set((
     'AVG, COUNT, COUNT_DISTINCT, MIN, MAX, SUM'
-    ).split(', '))
+).split(', '))
 pattern_aggregation = re.compile(r'\b(?:{})(?=\()'.format('|'.join(AGGREGATION_WORDS)), re.I)
 pattern_groupby = re.compile(r'\bGROUP BY\b', re.I)
 
@@ -72,7 +72,8 @@ class QQuery(object):
         consumed_subqueries = 0
         expr_alias_counter = 0
         #
-        import pdb; pdb.set_trace()
+        import pdb
+        pdb.set_trace()
         if not self.is_plain_count:
             for field in fields:
                 if self.is_aggregation:
@@ -237,7 +238,7 @@ def simplify_expression(txt):
                                    txt.strip())))
     # add space before some "(" and after some ")"
     return re.sub(r'\)(?=\w)', ') ',
-            re.sub(r'(,|\b(?:{}))\('.format('|'.join(RESERVED_WORDS)), '\\1 (',
+                  re.sub(r'(,|\b(?:{}))\('.format('|'.join(RESERVED_WORDS)), '\\1 (',
                          minimal))
 
 
@@ -251,7 +252,8 @@ class TestSubSelectSearch(TestCase):
         self.assertRaises(AssertionError, find_closing_parenthesis, '() (() (())) ()', 1)
 
     def test_subquery(self):
-        def func(x): return '*transfomed*'
+        def func(x):
+            return '*transfomed*'
         sql = "SELECT a, (SELECT x FROM y) FROM b WHERE (c IN (SELECT p FROM q WHERE r = %s) AND c = %s)"
         expected = "*transfomed*(SELECT x FROM y)*transfomed*(SELECT p FROM q WHERE r = %s)*transfomed*"
         self.assertEqual(transform_except_subquery(sql, func), expected)
@@ -265,7 +267,8 @@ class TestSubSelectSearch(TestCase):
         self.assertEqual(split_subquery(sql), expected)
 
     def test_nested_subquery(self):
-        def func(x): return '*transfomed*'
+        def func(x):
+            return '*transfomed*'
         sql = "SELECT a, (SELECT x, (SELECT p FROM q) FROM y) FROM b"
         expected = "*transfomed*(SELECT x, (SELECT p FROM q) FROM y)*transfomed*"
         self.assertEqual(transform_except_subquery(sql, func), expected)

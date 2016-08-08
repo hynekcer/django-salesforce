@@ -9,8 +9,6 @@ Code at lower level than DB API should be also here.
 from collections import namedtuple
 import requests
 import socket
-import time
-import weakref
 
 from django.conf import settings
 from django.utils.six import PY3
@@ -178,8 +176,8 @@ class Cursor(object):
     def execute(self, operation, parameters):
         self._clean()
         sqltype = operation.split(None, 1)[0].upper()
-        #TODO
-        import pdb; pdb.set_trace()
+        _ = sqltype  # NOQA
+        # TODO
         if TODO == 'SELECT':
             self.description = ()
         self.rowcount = TODO
@@ -249,8 +247,8 @@ class Connection(object):
     def __init__(self, **params):
         self.errorhandler = params.pop('errorhandler', standard_errorhandler)
         self.use_introspection = params.pop('use_introspection', True)
-        #...
-        self._connection = True  #...
+        # ...
+        self._connection = True  # ...
 
     def close(self):
         self._check()
@@ -317,8 +315,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
         f:  requests.get or requests.post...
         _cursor: sharing the debug information in cursor
     """
-    #import pdb; pdb.set_trace()
-    #print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
+    # print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
     global request_count
     # The 'verify' option is about verifying SSL certificates
     kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', 3),

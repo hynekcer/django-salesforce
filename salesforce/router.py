@@ -16,6 +16,7 @@ from django.conf import settings
 
 log = logging.getLogger(__name__)
 
+
 def is_sf_database(db, model=None):
     """The alias is a Salesforce database."""
     from django.db import connections

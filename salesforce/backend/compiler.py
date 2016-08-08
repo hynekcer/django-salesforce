@@ -10,10 +10,11 @@ Generate queries using the SOQL dialect.
 """
 import re
 from django.db import models
-from django.db.models.sql import compiler, query, where, constants, AND, OR
+from django.db.models.sql import compiler, where, constants, AND
 from django.db.models.sql.datastructures import EmptyResultSet
+from django.db.transaction import TransactionManagementError
+from django.db.utils import DatabaseError
 import django.db.models.aggregates
-from . import subselect
 
 from salesforce import DJANGO_19_PLUS
 
@@ -94,8 +95,8 @@ class SQLCompiler(compiler.SQLCompiler):
             return cursor.fetchone()
 
         # The MULTI case.
-        result = iter((lambda: cursor.fetchmany(constants.GET_ITERATOR_CHUNK_SIZE)),
-                self.connection.features.empty_fetchmany_value)
+        result = iter(lambda: cursor.fetchmany(constants.GET_ITERATOR_CHUNK_SIZE),
+                      self.connection.features.empty_fetchmany_value)
         if not self.connection.features.can_use_chunked_reads:
             # If we are using non-chunked reads, we return the same data
             # structure as normally, but ensure it is all read into memory
@@ -241,8 +242,9 @@ class SQLCompiler(compiler.SQLCompiler):
             alias_map_items = _alias_map_items
         else:
             alias_map_items = [(getattr(v, 'parent_alias', None), v.table_name,
-                               getattr(v, 'join_cols', None), v.table_alias
-                              ) for v in query.alias_map.values()]
+                                getattr(v, 'join_cols', None), v.table_alias
+                                ) for v in query.alias_map.values()
+                               ]
         # Analyze
         alias2table = {}
         side_l, side_r = set(), set()
@@ -282,7 +284,7 @@ class SQLCompiler(compiler.SQLCompiler):
                         lhs, rhs = rhs, lhs
                         join_cols = join_cols[1], join_cols[0]
                     if lhs in work_lhses:
-                        assert not rhs in soql_trans
+                        assert rhs not in soql_trans
                         if join_cols[0].endswith('__c'):
                             fkey = re.sub('__c$', '__r', join_cols[0])
                         else:
@@ -334,7 +336,7 @@ class SalesforceWhereNode(where.WhereNode):
                     if x_match:
                         x_table, x_field = x_match.groups()
                         sql = '%s.%s' % (soql_trans[x_table], x_field)
-                        #print('sql params:', sql, params)
+                        # print('sql params:', sql, params)
                     result.append(sql)
                     result_params.extend(params)
                 else:
@@ -410,14 +412,17 @@ class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
         if not return_id:
             return
         return self.connection.ops.last_insert_id(cursor,
-                self.query.model._meta.db_table, self.query.model._meta.pk.column)
+                                                  self.query.model._meta.db_table,
+                                                  self.query.model._meta.pk.column)
 
 
 class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
     pass
 
+
 class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
     pass
+
 
 class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
     pass
@@ -455,6 +460,7 @@ class Range(models.lookups.Range):
             return super(Range, self).as_sql(qn, connection)
 
 models.Field.register_lookup(Range)
+
 
 def count_as_salesforce(self, *args, **kwargs):
     if (len(self.source_expressions) == 1 and

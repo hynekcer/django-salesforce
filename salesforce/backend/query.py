@@ -31,7 +31,7 @@ from django.db.models.sql.datastructures import EmptyResultSet
 from django.utils.six import PY3
 
 from salesforce import models, DJANGO_110_PLUS
-from salesforce.backend.driver import DatabaseError, SalesforceError, handle_api_exceptions, API_STUB
+from salesforce.backend.driver import DatabaseError, handle_api_exceptions
 from salesforce.backend.compiler import SQLCompiler
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
@@ -54,7 +54,6 @@ SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
 
 
-
 def rest_api_url(sf_session, service, *args):
     """Join the URL of REST_API
 
@@ -62,11 +61,11 @@ def rest_api_url(sf_session, service, *args):
               rest_url(sf_session, "sobject", "Contact", id)
     """
     return '{base}/services/data/v{version}/{service}{slash_args}'.format(
-                base=sf_session.auth.instance_url,
-                version=salesforce.API_VERSION,
-                service=service,
-                slash_args=''.join('/' + x for x in args)
-            )
+        base=sf_session.auth.instance_url,
+        version=salesforce.API_VERSION,
+        service=service,
+        slash_args=''.join('/' + x for x in args)
+    )
 
 
 def quoted_string_literal(s):
@@ -76,8 +75,9 @@ def quoted_string_literal(s):
     """
     try:
         return "'%s'" % (s.replace("\\", "\\\\").replace("'", "\\'"),)
-    except TypeError as e:
+    except TypeError:
         raise NotImplementedError("Cannot quote %r objects: %r" % (type(s), s))
+
 
 def arg_to_soql(arg):
     """
@@ -88,6 +88,7 @@ def arg_to_soql(arg):
     if(isinstance(arg, decimal.Decimal)):
         return sql_conversions[decimal.Decimal](arg)
     return sql_conversions.get(type(arg), sql_conversions[str])(arg)
+
 
 def arg_to_sf(arg):
     """
@@ -111,7 +112,7 @@ def prep_for_deserialize_inner(model, record, init_list=None):
             else:
                 # Normal fields
                 field_val = record[x.column]
-                #db_type = x.db_type(connection=connections[using])
+                # db_type = x.db_type(connection=connections[using])
                 if(x.__class__.__name__ == 'DateTimeField' and field_val is not None):
                     d = datetime.datetime.strptime(field_val, SALESFORCE_DATETIME_FORMAT)
                     import pytz
@@ -126,15 +127,15 @@ def prep_for_deserialize_inner(model, record, init_list=None):
                     fields[x.name] = field_val
     return fields
 
+
 def prep_for_deserialize(model, record, using, init_list=None):
     """
     Convert a record from SFDC (decoded JSON) to dict(model string, pk, fields)
     If fixes fields of some types. If names of required fields `init_list `are
     specified, then only these fields are processed.
     """
-    from salesforce.backend import base
     # TODO the parameter 'using' is not currently important.
-    attribs = record.pop('attributes')
+    attribs = record.pop('attributes')  # NOQA unused
 
     mod = model.__module__.split('.')
     if(mod[-1] == 'models'):
@@ -183,9 +184,12 @@ def extract_values_inner(row, query):
     fields = query.model._meta.fields
     for index in range(len(fields)):
         field = fields[index]
-        if (field.get_internal_type() == 'AutoField' or
-                isinstance(query, subqueries.UpdateQuery) and (getattr(field, 'sf_read_only', 0) & NOT_UPDATEABLE) != 0 or
-                isinstance(query, subqueries.InsertQuery) and (getattr(field, 'sf_read_only', 0) & NOT_CREATEABLE) != 0):
+        sf_read_only = getattr(field, 'sf_read_only', 0)
+        if (
+            field.get_internal_type() == 'AutoField' or
+            isinstance(query, subqueries.UpdateQuery) and (sf_read_only & NOT_UPDATEABLE) != 0 or
+            isinstance(query, subqueries.InsertQuery) and (sf_read_only & NOT_CREATEABLE) != 0
+        ):
             continue
         if(isinstance(query, subqueries.UpdateQuery)):
             # update
@@ -215,6 +219,7 @@ class SalesforceRawQuerySet(query.RawQuerySet):
             # force the query
             self.query.get_columns()
         return self.query.cursor.rowcount
+
 
 class SalesforceQuerySet(query.QuerySet):
     """
@@ -267,6 +272,7 @@ class SalesforceQuerySet(query.QuerySet):
                 model_cls = deferred_class_factory(self.model, skip)
 
         field_names = self.query.get_loaded_field_names()
+        _ = field_names  # NOQA
         for res in python.Deserializer(
                 x for x in
                 (prep_for_deserialize(model_cls, r, self.db, init_list)
@@ -294,6 +300,7 @@ class SalesforceQuerySet(query.QuerySet):
         obj.query.set_query_all()
         return obj
 
+
 class SalesforceRawQuery(RawQuery):
     def clone(self, using):
         return SalesforceRawQuery(self.sql, using, params=self.params)
@@ -315,7 +322,6 @@ class SalesforceRawQuery(RawQuery):
         return "<SalesforceRawQuery: %s; %r>" % (self.sql, tuple(self.params))
 
     def __iter__(self):
-        #import pdb; pdb.set_trace()
         for row in super(SalesforceRawQuery, self).__iter__():
             yield [row[k] for k in self.get_columns()]
 
@@ -364,7 +370,7 @@ class CursorWrapper(object):
     """
     # This can be used to disable SOAP API for bulk operations even if beatbox
     # is installed and use REST API Bulk requests (Useful for tests, but worse
-    # than SOAP especially due to governor limits.) 
+    # than SOAP especially due to governor limits.)
     use_soap_for_bulk = True
 
     def __init__(self, db, query=None):
@@ -399,7 +405,7 @@ class CursorWrapper(object):
         self.rowcount = None
         if isinstance(self.query, SalesforceQuery) or self.query is None:
             response = self.execute_select(q, args)
-            #print("response : %s" % response.text)
+            # print("response : %s" % response.text)
         elif isinstance(self.query, SalesforceRawQuery):
             response = self.execute_select(q, args)
         elif isinstance(self.query, subqueries.InsertQuery):
@@ -429,7 +435,7 @@ class CursorWrapper(object):
             elif('success' in data and 'id' in data):
                 self.lastrowid = data['id']
                 return
-            elif data['hasErrors'] == False:
+            elif data['hasErrors'] is False:
                 # save id from bulk_create even if Django don't use it
                 if data['results'] and data['results'][0]['result']:
                     self.lastrowid = [item['result']['id'] for item in data['results']]
@@ -510,15 +516,15 @@ class CursorWrapper(object):
                 if pk and hasattr(pk[0], 'pk'):
                     last_mod = max(getattr(x, fld.name)
                                    for x in pk if hasattr(x, 'pk')
-                                   for fld in x._meta.fields if fld.db_column=='LastModifiedDate'
+                                   for fld in x._meta.fields if fld.db_column == 'LastModifiedDate'
                                    )
                 if last_mod is None:
                     last_mod = datetime.datetime.utcnow()
                 post_data = {
-                    'batchRequests': [{'method' : 'PATCH',
-                                       'url' : 'v{0}/sobjects/{1}/{2}'.format(salesforce.API_VERSION,
-                                                                              table,
-                                                                              getattr(x, 'pk', x)),
+                    'batchRequests': [{'method': 'PATCH',
+                                       'url': 'v{0}/sobjects/{1}/{2}'.format(salesforce.API_VERSION,
+                                                                             table,
+                                                                             getattr(x, 'pk', x)),
                                        'richInput': post_data
                                        }
                                       for x in pk
@@ -527,7 +533,8 @@ class CursorWrapper(object):
                 import time
                 headers.update({'If-Unmodified-Since': time.strftime('%a, %d %b %Y %H:%M:%S GMT',
                                (last_mod + datetime.timedelta(seconds=0)).timetuple())})
-                _ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data), _cursor=self)
+                _ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
+                                             _cursor=self)
             else:
                 # bulk by SOAP
                 svc = salesforce.utils.get_soap_client('salesforce')
@@ -541,13 +548,15 @@ class CursorWrapper(object):
         else:
             # single request
             url = rest_api_url(self.session, 'sobjects', table, pk)
-            _ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data), _cursor=self)
+            _ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data),
+                                         _cursor=self)
         self.rowcount = 1
         return _ret
 
     def execute_delete(self, query):
         table = query.model._meta.db_table
-        ## the root where node's children may itself have children..
+
+        # the root where node's children may itself have children..
         def recurse_for_pk(children):
             for node in children:
                 if hasattr(node, 'rhs'):
@@ -586,7 +595,7 @@ class CursorWrapper(object):
         """The Force.com Identity Service (return type dict of text_type)"""
         # https://developer.salesforce.com/page/Digging_Deeper_into_OAuth_2.0_at_Salesforce.com?language=en&language=en#The_Force.com_Identity_Service
         if 'id' in self.oauth:
-            url =  self.oauth['id']
+            url = self.oauth['id']
         else:
             # dynamic auth without 'id' parameter
             url = self.urls_request()['identity']
@@ -604,7 +613,7 @@ class CursorWrapper(object):
             for rec in results['records']:
                 if rec['attributes']['type'] == 'AggregateResult' and hasattr(self.query, 'annotation_select'):
                     annotation_select = self.query.annotation_select
-                    assert len(rec) -1 == len(list(annotation_select.items()))
+                    assert len(rec) - 1 == len(list(annotation_select.items()))
                     # The 'attributes' info is unexpected for Django within fields.
                     rec = [rec[k] for k, _ in annotation_select.items()]
                 yield rec
@@ -661,6 +670,7 @@ def date_literal(d):
     tzname = datetime.datetime.strftime(d, "%z")
     return datetime.datetime.strftime(d, "%Y-%m-%dT%H:%M:%S.000") + tzname
 
+
 def sobj_id(obj):
     return obj.pk
 
@@ -669,7 +679,7 @@ json_conversions = {
     int: str,
     float: lambda o: '%.15g' % o,
     type(None): lambda s: None,
-    str: lambda o: o, # default
+    str: lambda o: o,  # default
     bool: lambda s: str(s).lower(),
     datetime.date: lambda d: datetime.date.strftime(d, "%Y-%m-%d"),
     datetime.datetime: date_literal,
@@ -683,7 +693,7 @@ if not PY3:
 sql_conversions = json_conversions.copy()
 sql_conversions.update({
     type(None): lambda s: 'NULL',
-    str: quoted_string_literal, # default
+    str: quoted_string_literal,  # default
 })
 
 if not PY3:
