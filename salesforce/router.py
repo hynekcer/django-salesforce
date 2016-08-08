@@ -13,7 +13,6 @@ import logging
 
 from django.apps import apps
 from django.conf import settings
-from salesforce import DJANGO_18_PLUS
 
 log = logging.getLogger(__name__)
 
@@ -95,9 +94,3 @@ class ModelRouter(object):
         # Nothing is said about non SF models with non SF databases, because
         # it can be solved by other routers, otherwise is enabled if all
         # routers say None.
-
-    if not DJANGO_18_PLUS:
-        _allow_migrate = allow_migrate
-
-        def allow_migrate(self, db, model):
-            return self._allow_migrate(db, model._meta.app_label, model._meta.model_name, model=model)
