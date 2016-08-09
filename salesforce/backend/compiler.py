@@ -12,8 +12,9 @@ import re
 from django.db import models
 from django.db.models.sql import compiler, where, constants, AND
 from django.db.models.sql.datastructures import EmptyResultSet
+from django.db.transaction import TransactionManagementError
+from django.db.utils import DatabaseError
 import django.db.models.aggregates
-from . import subselect
 
 from salesforce import DJANGO_19_PLUS
 
@@ -335,7 +336,7 @@ class SalesforceWhereNode(where.WhereNode):
                     if x_match:
                         x_table, x_field = x_match.groups()
                         sql = '%s.%s' % (soql_trans[x_table], x_field)
-                        #print('sql params:', sql, params)
+                        # print('sql params:', sql, params)
                     result.append(sql)
                     result_params.extend(params)
                 else:

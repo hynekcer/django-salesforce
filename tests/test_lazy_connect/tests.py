@@ -8,6 +8,7 @@ from requests.exceptions import ConnectionError
 # nice to see '(expected failures=1)' in the main results
 from salesforce.backend.test_helpers import expectedFailureIf
 
+
 class LazyTest(TestCase):
     def test_lazy_connection(self):
         """

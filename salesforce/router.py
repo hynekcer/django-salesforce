@@ -90,7 +90,7 @@ class ModelRouter(object):
         # the future it can be allowed to do deep check of compatibily Django
         # models with SF models by introspection.
         if(hasattr(model, '_salesforce_object')):
-            #return False
+            # return False
             pass
         # Nothing is said about non SF models with non SF databases, because
         # it can be solved by other routers, otherwise is enabled if all

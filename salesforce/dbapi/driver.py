@@ -15,8 +15,9 @@ import logging
 
 from django.conf import settings
 from .exceptions import (Error, DatabaseError, DataError, IntegrityError,
-                         InterfaceError,  InternalError, NotSupportedError,
+                         InterfaceError, InternalError, NotSupportedError,
                          OperationalError, ProgrammingError, SalesforceError)
+import pdb
 try:
     import beatbox
 except ImportError:
@@ -122,8 +123,9 @@ class Cursor(object):
     def execute(self, operation, parameters):
         self._clean()
         sqltype = operation.split(None, 1)[0].upper()
+        _ = sqltype  # NOQA
         # TODO
-        import pdb; pdb.set_trace()
+        pdb.set_trace()
         if TODO == 'SELECT':
             self.description = ()
         self.rowcount = TODO
@@ -193,8 +195,8 @@ class Connection(object):
     def __init__(self, **params):
         self.errorhandler = params.pop('errorhandler', standard_errorhandler)
         self.use_introspection = params.pop('use_introspection', True)
-        #...
-        self._connection = True  #...
+        # ...
+        self._connection = True  # ...
 
     def close(self):
         self._check()
@@ -261,7 +263,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
         f:  requests.get or requests.post...
         _cursor: sharing the debug information in cursor
     """
-    # import pdb; pdb.set_trace()
+    # pdb.set_trace()
     # print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
     global request_count
     # The 'verify' option is about verifying SSL certificates
