@@ -31,7 +31,7 @@ from django.db.models.sql.datastructures import EmptyResultSet
 from django.utils.six import PY3
 
 from salesforce import models, DJANGO_110_PLUS
-from salesforce.dbapi.driver import DatabaseError, SalesforceError, handle_api_exceptions
+from salesforce.dbapi.driver import DatabaseError, handle_api_exceptions
 from salesforce.backend.compiler import SQLCompiler
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
@@ -61,11 +61,11 @@ def rest_api_url(sf_session, service, *args):
               rest_url(sf_session, "sobject", "Contact", id)
     """
     return '{base}/services/data/v{version}/{service}{slash_args}'.format(
-                base=sf_session.auth.instance_url,
-                version=salesforce.API_VERSION,
-                service=service,
-                slash_args=''.join('/' + x for x in args)
-            )
+        base=sf_session.auth.instance_url,
+        version=salesforce.API_VERSION,
+        service=service,
+        slash_args=''.join('/' + x for x in args)
+    )
 
 
 def quoted_string_literal(s):
@@ -135,7 +135,7 @@ def prep_for_deserialize(model, record, using, init_list=None):
     specified, then only these fields are processed.
     """
     # TODO the parameter 'using' is not currently important.
-    attribs = record.pop('attributes')
+    attribs = record.pop('attributes')  # NOQA unused
 
     mod = model.__module__.split('.')
     if(mod[-1] == 'models'):
@@ -272,6 +272,7 @@ class SalesforceQuerySet(query.QuerySet):
                 model_cls = deferred_class_factory(self.model, skip)
 
         field_names = self.query.get_loaded_field_names()
+        _ = field_names  # NOQA
         for res in python.Deserializer(
                 x for x in
                 (prep_for_deserialize(model_cls, r, self.db, init_list)
@@ -321,7 +322,7 @@ class SalesforceRawQuery(RawQuery):
         return "<SalesforceRawQuery: %s; %r>" % (self.sql, tuple(self.params))
 
     def __iter__(self):
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         for row in super(SalesforceRawQuery, self).__iter__():
             yield [row[k] for k in self.get_columns()]
 
@@ -405,7 +406,7 @@ class CursorWrapper(object):
         self.rowcount = None
         if isinstance(self.query, SalesforceQuery) or self.query is None:
             response = self.execute_select(q, args)
-            #print("response : %s" % response.text)
+            # print("response : %s" % response.text)
         elif isinstance(self.query, SalesforceRawQuery):
             response = self.execute_select(q, args)
         elif isinstance(self.query, subqueries.InsertQuery):
