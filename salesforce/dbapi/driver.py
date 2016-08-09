@@ -9,19 +9,21 @@ Code at lower level than DB API should be also here.
 from collections import namedtuple
 import requests
 import socket
-import time
-import weakref
+# import time
+# import weakref
+import logging
 
 from django.conf import settings
-from django.utils.six import PY3
-
+from salesforce.dbapi.exceptions import (
+    Error, DatabaseError, DataError, IntegrityError,
+    InterfaceError, InternalError, NotSupportedError,
+    OperationalError, ProgrammingError, SalesforceError,
+)
 try:
     import beatbox
 except ImportError:
     beatbox = None
 
-import logging
-log = logging.getLogger(__name__)
 
 apilevel = "2.0"
 # threadsafety = ...
@@ -29,65 +31,9 @@ apilevel = "2.0"
 # uses '%s' style parameters
 paramstyle = 'format'
 
-API_STUB = '/services/data/v35.0'
-
 request_count = 0  # global counter
 
-# All error types described in DB API 2 are implemented the same way as in
-# Django 1.8, otherwise some exceptions are not correctly reported in it.
-
-
-class Error(Exception if PY3 else StandardError):
-    pass
-
-
-class InterfaceError(Error):
-    pass  # should be raised directly
-
-
-class DatabaseError(Error):
-    pass
-
-
-class DataError(DatabaseError):
-    pass
-
-
-class OperationalError(DatabaseError):
-    pass
-
-
-class IntegrityError(DatabaseError):
-    pass
-
-
-class InternalError(DatabaseError):
-    pass
-
-
-class ProgrammingError(DatabaseError):
-    pass
-
-
-class NotSupportedError(DatabaseError):
-    pass
-
-
-class SalesforceError(DatabaseError):
-    """
-    DatabaseError that usually gets detailed error information from SF response
-
-    in the second parameter, decoded from REST, that frequently need not to be
-    displayed.
-    """
-    def __init__(self, message='', data=None, response=None, verbose=False):
-        DatabaseError.__init__(self, message)
-        self.data = data
-        self.response = response
-        self.verbose = verbose
-        if verbose:
-            log.info("Error (debug details) %s\n%s", response.text,
-                     response.__dict__)
+log = logging.getLogger(__name__)
 
 
 def standard_errorhandler(connection, cursor, errorclass, errorvalue):
@@ -178,7 +124,7 @@ class Cursor(object):
     def execute(self, operation, parameters):
         self._clean()
         sqltype = operation.split(None, 1)[0].upper()
-        #TODO
+        # TODO
         import pdb; pdb.set_trace()
         if TODO == 'SELECT':
             self.description = ()
@@ -317,8 +263,8 @@ def handle_api_exceptions(url, f, *args, **kwargs):
         f:  requests.get or requests.post...
         _cursor: sharing the debug information in cursor
     """
-    #import pdb; pdb.set_trace()
-    #print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
+    # import pdb; pdb.set_trace()
+    # print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
     global request_count
     # The 'verify' option is about verifying SSL certificates
     kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', 3),
