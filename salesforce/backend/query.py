@@ -9,9 +9,9 @@
 Salesforce object query and queryset customizations.
 """
 # TODO hynekcer: class CursorWrapper should
-#      be moved to salesforce.backend.driver at the next big refactoring
+#      be moved to salesforce.dbapi.driver at the next big refactoring
 #      (Evenso some low level internals of salesforce.auth should be moved to
-#      salesforce.backend.driver.Connection)
+#      salesforce.dbapi.driver.Connection)
 
 from __future__ import print_function
 import datetime
@@ -31,11 +31,11 @@ from django.db.models.sql.datastructures import EmptyResultSet
 from django.utils.six import PY3
 
 from salesforce import models, DJANGO_110_PLUS
-from salesforce.backend.driver import DatabaseError, handle_api_exceptions
+from salesforce.dbapi.driver import DatabaseError, handle_api_exceptions
 from salesforce.backend.compiler import SQLCompiler
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
-import salesforce.backend.driver
+import salesforce.dbapi.driver
 
 if not DJANGO_110_PLUS:
     from django.db.models.query_utils import deferred_class_factory
@@ -385,7 +385,7 @@ class CursorWrapper(object):
         self.results = None
         self.rowcount = None
         self.first_row = None
-        if salesforce.backend.driver.beatbox is None:
+        if salesforce.dbapi.driver.beatbox is None:
             self.use_soap_for_bulk = False
 
     def __enter__(self):

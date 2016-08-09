@@ -17,7 +17,7 @@ Unsupported GROUP BY ROLLUP and GROUP BY CUBE
 """
 import re
 from unittest import TestCase
-from salesforce.backend.driver import ProgrammingError
+from salesforce.dbapi.driver import ProgrammingError
 
 # reserved wods can not be used as alias names
 RESERVED_WORDS = set((
