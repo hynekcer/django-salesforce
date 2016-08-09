@@ -25,8 +25,8 @@ from django.db import connections
 import requests
 from requests.adapters import HTTPAdapter
 from requests.auth import AuthBase
-from salesforce.backend import get_max_retries
-from salesforce.backend.driver import DatabaseError, IntegrityError
+from salesforce.dbapi import get_max_retries
+from salesforce.dbapi.driver import DatabaseError, IntegrityError
 
 # TODO hy: more advanced methods with ouathlib can be implemented, but
 #      the simple doesn't require a special package.
