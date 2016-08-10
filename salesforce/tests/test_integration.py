@@ -891,8 +891,7 @@ class BasicSOQLRoTest(TestCase):
         from salesforce.testrunner.example.models import Attachment, Test
         if 'django_Test__c' not in sf_tables():
             self.skipTest("Not found custom object 'django_Test__c'")
-        import pdb
-        pdb.set_trace()
+        # import pdb; pdb.set_trace()
         qs = Attachment.objects.filter(parent__name='abc')
         # "SELECT Attachment.Id FROM Attachment WHERE Attachment.Parent.Name = 'abc'"
         list(qs)

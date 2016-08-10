@@ -40,10 +40,7 @@ class SalesforceManager(manager.Manager):
                 alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
             else:
                 alias = DEFAULT_DB_ALIAS
-        if router.is_sf_database(alias, self.model):
-            return self.get_queryset().using(alias)
-        else:
-            return super(SalesforceManager, self).using(alias)
+        return self.get_queryset().using(alias)
 
     def raw(self, raw_query, params=None, *args, **kwargs):
         if router.is_sf_database(self.db):
