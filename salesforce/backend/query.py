@@ -49,6 +49,8 @@ def prep_for_deserialize_inner(model, record, init_list=None):
                 fields[x.name] = record[simple_column]['Type']
             else:
                 # Normal fields
+                if x.column not in record:
+                    import pdb; pdb.set_trace()
                 field_val = record[x.column]
                 # db_type = x.db_type(connection=connections[using])
                 if(x.__class__.__name__ == 'DateTimeField' and field_val is not None):
@@ -125,6 +127,7 @@ class SalesforceQuerySet(query.QuerySet):
         cursor = CursorWrapper(connections[self.db], self.query)
         cursor.execute(sql, params)
 
+        # TODO this is different for Django 1.10
         only_load = self.query.get_loaded_field_names()
         load_fields = []
         # If only/defer clauses have been specified,
@@ -162,11 +165,10 @@ class SalesforceQuerySet(query.QuerySet):
         field_names = self.query.get_loaded_field_names()
         _ = field_names  # NOQA
         for res in python.Deserializer(
-                x for x in
-                (prep_for_deserialize(model_cls, r, self.db, init_list)
-                 for r in cursor.results
-                 )
-                if x is not None
+            (x for x in (prep_for_deserialize(model_cls, r, self.db, init_list)
+                         for r in cursor.results
+                         ) if x is not None
+             ), using=self.db
         ):
             # Store the source database of the object
             res.object._state.db = self.db
@@ -174,7 +176,8 @@ class SalesforceQuerySet(query.QuerySet):
             res.object._state.adding = False
 
             if DJANGO_110_PLUS and init_list is not None and len(init_list) != len(model_cls._meta.concrete_fields):
-                raise NotImplementedError("methods defer() and only() are not implemented for Django 1.10 yet")
+                pass  # TODO
+                # raise NotImplementedError("methods defer() and only() are not implemented for Django 1.10 yet")
 
             yield res.object
 

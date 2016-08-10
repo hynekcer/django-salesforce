@@ -12,13 +12,13 @@ import datetime
 import decimal
 import json
 import logging
-import pytz
+import re
 import socket
-
-import requests
 
 from django.conf import settings
 from django.db.models.sql import subqueries
+import pytz
+import requests
 
 from salesforce import models
 from salesforce.dbapi.exceptions import (
@@ -27,6 +27,7 @@ from salesforce.dbapi.exceptions import (
     OperationalError, ProgrammingError, SalesforceError,
     PY3
 )
+from salesforce.backend.subselect import QQuery
 import salesforce
 
 try:
@@ -133,35 +134,46 @@ class Cursor(object):
     def close(self):
         self.connection = None
 
-    def execute(self, operation, parameters):
+    def execute(self, sql, parameters):
         self._clean()
-        sqltype = operation.split(None, 1)[0].upper()
-        _ = sqltype  # NOQA
+        self.rowcount = None
+        sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
         # TODO
-        if TODO == 'SELECT':
-            self.description = ()
-        self.rowcount = TODO
+        if sqltype == 'SELECT':
+            self.qquery = QQuery(sql)
+            self.description = [(alias, None, None, None, name) for alias, name in
+                                zip(self.qquery.aliases, self.qquery.fields)]
+            cur = CursorWrapper(self.connection)
+            self.resp = cur.execute_select(sql, parameters)
+            self.iterator = self.qquery.parse_rest_response(self.resp, self)
+            # pdb.set_trace()
+            self.rowcount = self.resp.json()['totalSize']
+        else:
+            print("Not implemented: %s" % sql)
 
-    def executemany(self, operation, seq_of_parameters):
+    def executemany(self, sql, seq_of_parameters):
         self._clean()
         for param in seq_of_parameters:
-            self.execute(operation, param)
+            self.execute(sql, param)
+
+    def __iter__(self):
+        print("Used __iter__")
+        for x in self.iterator:
+            yield x
 
     def fetchone(self):
         self._check()
-        TODO
+        return next(self.iterator)
 
     def fetchmany(self, size=None):
         # size by SF
         # size = size or cursor.arraysize
         self._check()
-        for x in TODO:
-            pass
+        return list(islice(self.iterator, size or 100))
 
     def fetchall(self):
         self._check()
-        for x in TODO:
-            pass
+        return list(self.iterator)
 
     def setinputsizes(self):
         pass
@@ -514,6 +526,8 @@ class Connection(object):
         self.use_introspection = params.pop('use_introspection', True)
         # ...
         self._connection = True  # ...
+        # import pdb; pdb.set_trace()
+        pass
 
     def close(self):
         self._check()

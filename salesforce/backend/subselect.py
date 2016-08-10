@@ -72,8 +72,7 @@ class QQuery(object):
         consumed_subqueries = 0
         expr_alias_counter = 0
         #
-        import pdb
-        pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if not self.is_plain_count:
             for field in fields:
                 if self.is_aggregation:

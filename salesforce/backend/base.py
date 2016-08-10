@@ -107,6 +107,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self._is_sandbox = None
         # The SFDC database is connected as late as possible if only tests
         # are running. Some tests don't require a connection.
+        # import pdb; pdb.set_trace()
         if not getattr(settings, 'SF_LAZY_CONNECT', 'test' in sys.argv):
             self.make_session()
 
@@ -143,6 +144,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return Database.connect(**conn_params)
 
     def init_connection_state(self):
+        # import pdb; pdb.set_trace()
         pass  # nothing to init
 
     def _set_autocommit(self, autocommit):
@@ -167,8 +169,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         Return a fake cursor for accessing the Salesforce API with SOQL.
         """
-        from salesforce.backend.query import CursorWrapper
-        cursor = CursorWrapper(self, query)
+        from salesforce.dbapi.driver import CursorWrapper
+        #cursor = CursorWrapper(self, query)
+        cursor = Database.Cursor(self)
         return cursor
 
     def quote_name(self, name):
