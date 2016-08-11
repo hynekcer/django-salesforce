@@ -170,8 +170,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         Return a fake cursor for accessing the Salesforce API with SOQL.
         """
         from salesforce.dbapi.driver import CursorWrapper
-        #cursor = CursorWrapper(self, query)
-        cursor = Database.Cursor(self)
+        cursor = CursorWrapper(self, query)
+        # cursor = Database.Cursor(self)
         return cursor
 
     def quote_name(self, name):
