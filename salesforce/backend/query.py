@@ -25,7 +25,7 @@ from django.db.models import query
 from django.db.models.sql.datastructures import EmptyResultSet
 
 from salesforce import DJANGO_110_PLUS
-from salesforce.dbapi.driver import DatabaseError  # , CursorWrapper
+from salesforce.dbapi.driver import DatabaseError   , CursorWrapper
 from salesforce.backend.compiler import SQLCompiler
 from salesforce.fields import SF_PK
 
