@@ -1,7 +1,7 @@
 import logging
-log = logging.getLogger(__name__)
-
 import sys
+
+log = logging.getLogger(__name__)
 PY3 = sys.version_info[0] == 3
 
 # All error types described in DB API 2 are implemented the same way as in

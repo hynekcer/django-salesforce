@@ -15,7 +15,9 @@ require a combined parser for parentheses and commas.
 
 Unsupported GROUP BY ROLLUP and GROUP BY CUBE
 """
+import datetime
 import re
+import pytz
 from unittest import TestCase
 from salesforce.dbapi.driver import ProgrammingError
 
@@ -43,6 +45,8 @@ class QQuery(object):
     def __init__(self, soql=None):
         self.soql = None
         self.fields = []
+        # dictionary of chil to parent relationships - lowercase keys
+        self.subroots = {}
         self.aliases = []
         self.root_table = None
         # is_aggregation: only to know if aliases are relevant for output
@@ -95,24 +99,41 @@ class QQuery(object):
                     alias = subquery.root_table
                 else:
                     alias = field
-                    if '.' in alias and alias.split('.', 1)[0].lower() == self.root_table.lower():
-                        alias = alias.split('.', 1)[1]
+                    if '.' in alias:
+                        if alias.split('.', 1)[0].lower() == self.root_table.lower():
+                            alias = alias.split('.', 1)[1]
+                        if '.' in alias:
+                            # prepare paths for possible empty outer joins
+                            subroots = self.subroots
+                            root_crumbs = alias.lower().split('.')[:-1]
+                            for scrumb in root_crumbs:
+                                subroots.setdefault(scrumb, {})
+                                subroots = subroots[scrumb]
                 self.aliases.append(alias)
                 self.fields.append(field)
         # TODO it is not currently necessary to parse the exta_soql
         pass
 
-    @staticmethod
-    def _make_flat(row_dict, cursor=None):
-        """Replace nested objects by flat "object.object.name" flat structure"""
+    def _make_flat(self, row_dict, path, subroots, cursor=None):
+        """Replace the nested dict objects by a flat dict with keys "object.object.name"."""
+        # cursor parameter is currently unused
         out = {}
         for k, v in row_dict.items():
+            klc = k.lower()  # "k lower case"
             if (not isinstance(v, dict) or (
                 'done' in v and 'records' in v and 'totalSize' in v
             )):
-                out[k.lower()] = v
+                if klc not in subroots:
+                    out[klc] = v
+                else:
+                    strpath = '.'.join(path + (klc,)) + '.'
+                    strip_pos = len(strpath) - len(klc + '.')
+                    for alias in self.aliases:
+                        if alias.lower().startswith(strpath):
+                            out[alias.lower()[strip_pos:]] = None  # empty outer join field names
             else:
-                for sub_k, sub_v in QQuery._make_flat(v, cursor).items():
+                new_subroots = subroots[klc] if k != 'attributes' else {}
+                for sub_k, sub_v in self._make_flat(v, path + (klc,), new_subroots, cursor).items():
                     out[k.lower() + '.' + sub_k] = sub_v
         return out
 
@@ -127,15 +148,30 @@ class QQuery(object):
             while True:
                 for row_deep in resp['records']:
                     assert self.is_aggregation == (row_deep['attributes']['type'] == 'AggregateResult')
-                    row_flat = self._make_flat(row_deep, cursor)
+                    row_flat = self._make_flat(row_deep, path=(), subroots=self.subroots, cursor=cursor)
+                    # TODO really "or x['done']"?
                     assert all(not isinstance(x, dict) or x['done'] for x in row_flat)
-                    yield [row_flat[k.lower()] for k, v in zip(self.aliases, self.fields)]
+                    row_out = [row_flat[k.lower()] for k, v in zip(self.aliases, self.fields)]
+                    yield [fix_data_type(x) for x in row_out]
                 if not resp['done']:
                     if not cursor:
                         raise ProgrammingError("Must get a cursor")
-                    resp = cursor.query_more(response['nextRecordsUrl']).json()
+                    resp = cursor.query_more(resp['nextRecordsUrl']).json()
                 else:
                     break
+
+
+SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
+SF_DATETIME_PATTERN = re.compile(r'[1-3]\d{3}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-6]\d.\d{3}\+0000$')
+text_type = type(u'')
+
+def fix_data_type(data, tzinfo=None):
+    if isinstance(data, text_type) and SF_DATETIME_PATTERN.match(data):
+        d = datetime.datetime.strptime(data, SALESFORCE_DATETIME_FORMAT)
+        d = d.replace(tzinfo=pytz.utc)
+        return d
+    else:
+        return data
 
 
 def mark_quoted_strings(sql):

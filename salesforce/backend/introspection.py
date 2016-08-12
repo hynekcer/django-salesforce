@@ -17,7 +17,6 @@ import salesforce.fields
 
 from django.db.backends.base.introspection import BaseDatabaseIntrospection
 
-from salesforce.backend import query
 from salesforce.dbapi.driver import rest_api_url
 
 # require "simplejson" to ensure that it is available to "requests" hook.
@@ -96,7 +95,14 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         return self._table_description_cache[table]
 
     def table_name_converter(self, name):
-        return name
+        """Compare table names case insensitive"""
+        return name.lower()
+
+    def column_name_converter(self, name):
+        """Compare field names case insensitive, but convert "id" to "Id"."""
+        # it is complicated due to raw queries
+        # return name.lower() if name.lower() != 'id' else 'Id'
+        return name.title()
 
     def get_table_list(self, cursor):
         "Returns a list of table names in the current database."

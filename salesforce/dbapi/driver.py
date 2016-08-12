@@ -18,7 +18,6 @@ import socket
 # import time
 # import weakref
 
-import pdb
 import pytz
 
 from django.conf import settings
@@ -145,13 +144,13 @@ class Cursor(object):
         # TODO
         if sqltype == 'SELECT':
             self.qquery = QQuery(sql)
-            self.description = [(alias, None, None, None, name) for alias, name in 
+            self.description = [(alias, None, None, None, name) for alias, name in
                                 zip(self.qquery.aliases, self.qquery.fields)]
             cur = CursorWrapper(self.connection)
             self.resp = cur.execute_select(sql, parameters)
             self.iterator = self.qquery.parse_rest_response(self.resp, self)
             # pdb.set_trace()
-            self.rowcount = self.resp.json()['totalSize']
+            self.rowcount = self.resp.json(parse_float=decimal.Decimal)['totalSize']
         else:
             import pdb; pdb.set_trace()
             pass
@@ -236,17 +235,37 @@ class CursorWrapper(object):
         return self.session.auth.get_auth()
 
     # fix dep subqueries type
-    def execute(self, q, args=()):
+    def execute(self, sql, args=()):
         """
         Send a query to the Salesforce API.
         """
-        from salesforce.backend.sql_query import SalesforceQuery, SalesforceRawQuery
+        # from salesforce.backend.sql_query import SalesforceQuery, SalesforceRawQuery
         self.rowcount = None
-        if isinstance(self.query, SalesforceQuery) or self.query is None:
-            response = self.execute_select(q, args)
-            # print("response : %s" % response.text)
-        elif isinstance(self.query, SalesforceRawQuery):
-            response = self.execute_select(q, args)
+        self.db.last_chunk_len = None
+        sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
+        # TODO
+        if sqltype == 'SELECT' and not sql.upper().startswith('SELECT COUNT() FROM'):
+            self.qquery = QQuery(sql)
+            self.description = [(alias, None, None, None, name) for alias, name in
+                                zip(self.qquery.aliases, self.qquery.fields)]
+            response = self.execute_select(sql, args)
+            data = response.json(parse_float=decimal.Decimal)
+            if 'totalSize' in data:
+                self.rowcount = data['totalSize']
+                if self.query:
+                    self.query.last_chunk_len = len(data['records'])
+                self.first_row = data['records'][0] if data['records'] else None
+            else:
+                raise DatabaseError(data)
+            self.results = self.qquery.parse_rest_response(response, self)
+            return
+            # pdb.set_trace()
+
+        # elif isinstance(self.query, SalesforceQuery) or self.query is None:
+        #     response = self.execute_select(sql, args)
+        #     # print("response : %s" % response.text)
+        # elif isinstance(self.query, SalesforceRawQuery):
+        #    response = self.execute_select(sql, args)
         elif isinstance(self.query, subqueries.InsertQuery):
             response = self.execute_insert(self.query)
         elif isinstance(self.query, subqueries.UpdateQuery):
@@ -283,12 +302,12 @@ class CursorWrapper(object):
             else:
                 raise DatabaseError(data)
 
-            if q.upper().startswith('SELECT COUNT() FROM'):
+            if sql.upper().startswith('SELECT COUNT() FROM'):
                 # COUNT() queries in SOQL are a special case, as they don't actually return rows
                 self.results = iter([[self.rowcount]])
             else:
                 if self.query:
-                    self.query.first_chunk_len = len(data['records'])
+                    self.db.last_chunk_len = len(data['records'])
                 self.first_row = data['records'][0] if data['records'] else None
                 self.results = self.query_results(data)
         else:
@@ -300,8 +319,6 @@ class CursorWrapper(object):
         url = rest_api_url(self.session, service, '?' + urlencode(dict(q=processed_sql)))
         log.debug(processed_sql)
         return handle_api_exceptions(url, self.session.get, _cursor=self)
-
-        print("== FETCH ONE")
 
     def query_more(self, nextRecordsUrl):
         url = u'%s%s' % (self.session.auth.instance_url, nextRecordsUrl)
@@ -469,14 +486,12 @@ class CursorWrapper(object):
             results = response.json(parse_float=decimal.Decimal)
 
     def __iter__(self):
-        print("== GET ITER")
         return iter(self.results)
 
     def fetchone(self):
         """
         Fetch a single result from a previously executed query.
         """
-        print("== FETCH ONE")
         try:
             return next(self.results)
         except StopIteration:
@@ -486,7 +501,6 @@ class CursorWrapper(object):
         """
         Fetch multiple results from a previously executed query.
         """
-        print("== FETCH MANY")
         if size is None:
             size = 200
         return list(islice(self.results, size))
@@ -495,7 +509,6 @@ class CursorWrapper(object):
         """
         Fetch all results from a previously executed query.
         """
-        print("== FETCH ALL")
         return list(self.results)
 
     def close(self):
@@ -648,7 +661,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
     # TODO Remove this verbose setting after tuning of specific messages.
     #      Currently it is better more or less.
     # http://www.salesforce.com/us/developer/docs/api_rest/Content/errorcodes.htm
-    verbose = not getattr(getattr(_cursor, 'query', None), 'debug_silent', False)
+    verbose = not getattr(getattr(_cursor, 'db', None), 'debug_silent', False)
     # Errors are reported in the body
     data = response.json()[0]
     if response.status_code == 404:  # ResourceNotFound
