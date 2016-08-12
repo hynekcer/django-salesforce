@@ -211,6 +211,9 @@ class CursorWrapper(object):
     def __init__(self, db, query=None):
         """
         Connect to the Salesforce API.
+
+        Parameters:
+            db: the connection from connections[alias]
         """
         import salesforce.utils
         self.db = db
@@ -220,6 +223,7 @@ class CursorWrapper(object):
         self.results = None
         self.rowcount = None
         self.first_row = None
+        self.row_type = list
         if salesforce.dbapi.beatbox is None:
             self.use_soap_for_bulk = False
 
@@ -232,6 +236,13 @@ class CursorWrapper(object):
     @property
     def oauth(self):
         return self.session.auth.get_auth()
+
+    def set_row_factory(self, row_type):
+        """Set the row type to dict or list"""
+        assert issubclass(row_type, (dict, list))
+        if self.results:
+            raise NotSupportedError("Method set_row_factory can be used only on a new cursor.")
+        self.row_type = row_type
 
     # fix dep subqueries type
     def execute(self, sql, args=()):
@@ -256,7 +267,7 @@ class CursorWrapper(object):
                 self.first_row = data['records'][0] if data['records'] else None
             else:
                 raise DatabaseError(data)
-            self.results = self.qquery.parse_rest_response(response, self)
+            self.results = self.qquery.parse_rest_response(response, self, self.row_type)
             return
             # pdb.set_trace()
 

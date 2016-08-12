@@ -137,7 +137,7 @@ class QQuery(object):
                     out[k.lower() + '.' + sub_k] = sub_v
         return out
 
-    def parse_rest_response(self, response, cursor=None):
+    def parse_rest_response(self, response, cursor=None, row_type=list):
         """Parse the REST API response to DB API cursor flat response"""
         resp = response.json()
         if self.is_plain_count:
@@ -151,8 +151,10 @@ class QQuery(object):
                     row_flat = self._make_flat(row_deep, path=(), subroots=self.subroots, cursor=cursor)
                     # TODO really "or x['done']"?
                     assert all(not isinstance(x, dict) or x['done'] for x in row_flat)
-                    row_out = [row_flat[k.lower()] for k, v in zip(self.aliases, self.fields)]
-                    yield [fix_data_type(x) for x in row_out]
+                    if issubclass(row_type, dict):
+                        yield {k: fix_data_type(row_flat[k.lower()]) for k in self.aliases}
+                    else:
+                        yield [fix_data_type(row_flat[k.lower()]) for k in self.aliases]
                 if not resp['done']:
                     if not cursor:
                         raise ProgrammingError("Must get a cursor")
