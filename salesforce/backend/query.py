@@ -49,7 +49,7 @@ def prep_for_deserialize_inner(model, record, init_list=None):
                 fields[x.name] = record[simple_column]['Type']
             else:
                 # Normal fields
-                if not x.column in record:
+                if x.column not in record:
                     import pdb; pdb.set_trace()
                 field_val = record[x.column]
                 # db_type = x.db_type(connection=connections[using])
@@ -115,7 +115,7 @@ class SalesforceQuerySet(query.QuerySet):
     """
     Use a custom SQL compiler to generate SOQL-compliant queries.
     """
-    def iterator(self):
+    def sf_iterator(self):
         """
         An iterator over the results from applying this QuerySet to the
         remote web service.

@@ -105,6 +105,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.validation = DatabaseValidation(self)
         self._sf_session = None
         self._is_sandbox = None
+        # debug attributes and test attributes
+        self.debug_silent = False
+        self.last_chunk_len = None  # uppdated by Cursor class
         # The SFDC database is connected as late as possible if only tests
         # are running. Some tests don't require a connection.
         # import pdb; pdb.set_trace()
