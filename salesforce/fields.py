@@ -98,8 +98,8 @@ class SalesforceAutoField(fields.AutoField):
             raise ImproperlyConfigured("SalesforceAutoField must be a primary key"
                                        "with the name '%s' (as configured by settings)." % SF_PK)
         if cls._meta.has_auto_field:
-            if issubclass(self, cls._meta.auto_field) and (self.model._meta.abstract and
-                                                           cls._meta.auto_field.name == SF_PK):
+            if isinstance(self, type(cls._meta.auto_field)) and (self.model._meta.abstract and
+                                                                 cls._meta.auto_field.name == SF_PK):
                 # Creating the Model that inherits fields from more abstract classes
                 # with the same default SalesforceAutoFieldy The second one can be
                 # ignored.

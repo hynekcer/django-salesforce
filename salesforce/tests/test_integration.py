@@ -23,7 +23,7 @@ from salesforce.testrunner.example.models import (
     Product, Pricebook, PricebookEntry, Note, Task,
     Organization, models_template,
 )
-from salesforce import router  # , DJANGO_110_PLUS
+from salesforce import router
 import salesforce
 from ..backend.test_helpers import skip, skipUnless, expectedFailure, expectedFailureIf  # NOQA test decorators
 from ..backend.test_helpers import (current_user, default_is_sf, sf_alias, uid_version as uid,
@@ -613,10 +613,11 @@ class BasicSOQLRoTest(TestCase):
         # TODO hy: fix for concurrency
         sql = "SELECT Id, LastName, FirstName, OwnerId FROM Contact LIMIT 2"
         cursor = connections[sf_alias].cursor()
+        cursor.set_row_factory(dict)
         cursor.execute(sql)
         contacts = cursor.fetchall()
         self.assertEqual(len(contacts), 2)
-        self.assertEqual(cursor.description[3][0], 'OwnerId')
+        self.assertIn('OwnerId', contacts[0])
         cursor.execute(sql)
         self.assertEqual(cursor.fetchone(), contacts[0])
         self.assertEqual(cursor.fetchmany(), contacts[1:])
@@ -628,10 +629,11 @@ class BasicSOQLRoTest(TestCase):
         # Field 'Id' is very useful for COUNT over non empty fields.
         sql = "SELECT LastName, COUNT(Id) FROM Contact GROUP BY LastName LIMIT 2"
         cursor = connections[sf_alias].cursor()
+        cursor.set_row_factory(dict)
         cursor.execute(sql)
         contact_aggregate = cursor.fetchone()
-        self.assertEqual([x[0] for x in cursor.description], ['LastName', 'expr0'])
-        self.assertGreaterEqual(contact_aggregate[1], 1)
+        self.assertIn('LastName', contact_aggregate)
+        self.assertGreaterEqual(contact_aggregate['expr0'], 1)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_errors(self):

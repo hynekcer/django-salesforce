@@ -221,6 +221,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def converted_lead_status(self):
         if self._converted_lead_status is None:
             cur = self.connection.cursor()
+            cur.set_row_factory(dict)
             cur.execute("SELECT MasterLabel FROM LeadStatus "
                         "WHERE IsConverted = True ORDER BY SortOrder LIMIT 1")
             self._converted_lead_status = cur.fetchone()['MasterLabel']
