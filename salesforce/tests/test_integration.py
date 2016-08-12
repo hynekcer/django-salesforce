@@ -23,10 +23,11 @@ from salesforce.testrunner.example.models import (
     Product, Pricebook, PricebookEntry, Note, Task,
     Organization, models_template,
 )
-from salesforce import router, DJANGO_110_PLUS
+from salesforce import router  # , DJANGO_110_PLUS
 import salesforce
 from ..backend.test_helpers import skip, skipUnless, expectedFailure, expectedFailureIf  # NOQA test decorators
-from ..backend.test_helpers import current_user, default_is_sf, sf_alias, uid_version as uid
+from ..backend.test_helpers import (current_user, default_is_sf, sf_alias, uid_version as uid,
+                                    QuietSalesforceErrors)
 
 import logging
 log = logging.getLogger(__name__)
@@ -152,9 +153,10 @@ class BasicSOQLRoTest(TestCase):
         try:
             # test 1b is unique value
             duplicate = ApexEmailNotification(user=current_sf_user)
-            # the method self.assertRaise was too verbose about exception
+            # the method self.assertRaise didn't put information about the exception
             try:
-                duplicate.save()
+                with QuietSalesforceErrors(sf_alias):
+                    duplicate.save()
             except salesforce.backend.base.SalesforceError as exc:
                 self.assertEqual(exc.data['errorCode'], 'DUPLICATE_VALUE')
             else:
@@ -328,17 +330,19 @@ class BasicSOQLRoTest(TestCase):
         # The price for a product must be set in the standard price book.
         # http://www.salesforce.com/us/developer/docs/api/Content/sforce_api_objects_pricebookentry.htm
         pricebook = Pricebook.objects.get(Name="Standard Price Book")
+        unit_price = Decimal('1234.56')
         saved_pricebook_entry = PricebookEntry(Product2=product, Pricebook2=pricebook,
-                                               UnitPrice=Decimal('1234.56'), UseStandardPrice=False)
+                                               UnitPrice=unit_price, UseStandardPrice=False)
         saved_pricebook_entry.save()
         retrieved_pricebook_entry = PricebookEntry.objects.get(pk=saved_pricebook_entry.pk)
 
         try:
-            self.assertEqual(saved_pricebook_entry.UnitPrice, retrieved_pricebook_entry.UnitPrice)
+            self.assertEqual(saved_pricebook_entry.UnitPrice, unit_price)
         finally:
             retrieved_pricebook_entry.delete()
             product.delete()
 
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_zero_decimal_places(self):
         """Test that DecimalField with decimal_places=0 is correctly parsed"""
         campaign = Campaign(name='test something', number_sent=3)
@@ -379,6 +383,7 @@ class BasicSOQLRoTest(TestCase):
         # The reliability of this is only 99.9%, therefore it is commented out.
         # self.assertNotEqual(trigger.PreviousFireTime.microsecond, 0)
 
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_time_field(self):
         """Test a TimeField (read, modify, verify).
@@ -593,7 +598,7 @@ class BasicSOQLRoTest(TestCase):
         """
         all_leads = Lead.objects.query_all()
         leads_list = list(all_leads)
-        if all_leads.query.first_chunk_len == len(leads_list):
+        if connections[sf_alias].last_chunk_len == len(leads_list):
             self.assertLessEqual(len(leads_list), 2000, "Obsoleted constants")
             log.info("Not enough Leads accumulated (currently %d including deleted) "
                      "in the last two weeks that are necessary for splitting the "
@@ -611,7 +616,7 @@ class BasicSOQLRoTest(TestCase):
         cursor.execute(sql)
         contacts = cursor.fetchall()
         self.assertEqual(len(contacts), 2)
-        self.assertIn('OwnerId', contacts[0])
+        self.assertEqual(cursor.description[3][0], 'OwnerId')
         cursor.execute(sql)
         self.assertEqual(cursor.fetchone(), contacts[0])
         self.assertEqual(cursor.fetchmany(), contacts[1:])
@@ -625,8 +630,8 @@ class BasicSOQLRoTest(TestCase):
         cursor = connections[sf_alias].cursor()
         cursor.execute(sql)
         contact_aggregate = cursor.fetchone()
-        self.assertTrue('LastName' in contact_aggregate)
-        self.assertGreaterEqual(contact_aggregate['expr0'], 1)
+        self.assertEqual([x[0] for x in cursor.description], ['LastName', 'expr0'])
+        self.assertGreaterEqual(contact_aggregate[1], 1)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_errors(self):
@@ -635,9 +640,9 @@ class BasicSOQLRoTest(TestCase):
         # broken query raises exception
         bad_queryset = Lead.objects.raw("select XYZ from Lead")
         bad_queryset.query.debug_silent = True
-        self.assertRaises(salesforce.backend.base.SalesforceError, list, bad_queryset)
+        with QuietSalesforceErrors(sf_alias):
+            self.assertRaises(salesforce.backend.base.SalesforceError, list, bad_queryset)
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_queryset_values(self):
         """Test list of dict qs.values() and list of tuples qs.values_list()
         """
@@ -739,7 +744,6 @@ class BasicSOQLRoTest(TestCase):
     #    list(Contact.objects.raw("select Count() from Contact"))
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_110_PLUS)
     def test_only_fields(self):
         """Verify that access to "only" fields doesn't require a request, but others do.
         """
@@ -792,7 +796,6 @@ class BasicSOQLRoTest(TestCase):
         assert_n_requests(6)                                                    # total 6 requests
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_110_PLUS)
     def test_defer_fields(self):
         """Verify that access to a deferred field requires a new request, but others don't.
         """
@@ -805,10 +808,10 @@ class BasicSOQLRoTest(TestCase):
         _ = _  # NOQA
         self.assertEqual(salesforce.dbapi.driver.request_count, request_count_0 + 2)
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_110_PLUS)
     def test_incomplete_raw(self):
-        last_name = Contact.objects.raw("select id from Contact")[0].last_name
-        self.assertGreater(len(last_name), 0)
+        qs = Contact.objects.raw("select id from Contact")
+        last_name = qs[0].last_name
+        self.assertTrue(last_name and 'LastName' not in last_name)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_filter_by_more_fk_to_the_same_model(self):

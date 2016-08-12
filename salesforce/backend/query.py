@@ -115,7 +115,7 @@ class SalesforceQuerySet(query.QuerySet):
     """
     Use a custom SQL compiler to generate SOQL-compliant queries.
     """
-    def iterator(self):
+    def sf_iterator(self):
         """
         An iterator over the results from applying this QuerySet to the
         remote web service.
