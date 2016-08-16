@@ -632,7 +632,7 @@ if getattr(settings, 'IPV4_ONLY', False) and socket.getaddrinfo.__module__ in ('
 def handle_api_exceptions(url, f, *args, **kwargs):
     """Call REST API and handle exceptions
     Params:
-        f:  requests.get or requests.post...
+        f:  instance method requests.get or requests.post...
         _cursor: sharing the debug information in cursor
     """
     # print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
@@ -649,7 +649,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
     # TODO some timeouts can be rarely raised as "SSLError: The read operation timed out"
     except requests.exceptions.Timeout:
         raise SalesforceError("Timeout, URL=%s" % url)
-    if response.status_code == 401:
+    if response.status_code == 401 and f.__self__.auth.can_reauthenticate:
         # Unauthorized (expired or invalid session ID or OAuth)
         data = response.json()[0]
         if(data['errorCode'] == 'INVALID_SESSION_ID'):

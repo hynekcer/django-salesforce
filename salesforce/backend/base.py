@@ -14,11 +14,10 @@ import requests
 import sys
 import threading
 
-from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from requests.adapters import HTTPAdapter
 
-from salesforce.auth import SalesforcePasswordAuth
+from salesforce.auth import SalesforceAuth
 from salesforce.backend.client import DatabaseClient
 from salesforce.backend.creation import DatabaseCreation
 from salesforce.backend.validation import DatabaseValidation
@@ -30,10 +29,6 @@ from salesforce.dbapi import driver as Database, get_max_retries
 
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.base.features import BaseDatabaseFeatures
-try:
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse
 
 __all__ = ('DatabaseWrapper', 'DatabaseError', 'SalesforceError',)
 log = logging.getLogger(__name__)
@@ -94,9 +89,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if alias is None:
             alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
         super(DatabaseWrapper, self).__init__(settings_dict, alias)
-
-        self.validate_settings(settings_dict)
-
         self.features = DatabaseFeatures(self)
         self.ops = DatabaseOperations(self)
         self.client = DatabaseClient(self)
@@ -105,6 +97,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.validation = DatabaseValidation(self)
         self._sf_session = None
         self._is_sandbox = None
+        # configurable class Salesforce***Auth - combined with validate_setttings()
+        self._sf_auth = SalesforceAuth.create_subclass_instance(db_alias=self.alias,
+                                                                settings_dict=self.settings_dict)
         # debug attributes and test attributes
         self.debug_silent = False
         self.last_chunk_len = None  # uppdated by Cursor class
@@ -119,15 +114,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         with connect_lock:
             if self._sf_session is None:
                 sf_session = requests.Session()
-                # TODO configurable class Salesforce***Auth
-                sf_session.auth = SalesforcePasswordAuth(db_alias=self.alias,
-                                                         settings_dict=self.settings_dict)
-                sf_instance_url = sf_session.auth.instance_url
+                sf_session.auth = self._sf_auth
+                sf_instance_url = sf_session.auth.instance_url  # property: usually get by login request
                 sf_requests_adapter = HTTPAdapter(max_retries=get_max_retries())
                 sf_session.mount(sf_instance_url, sf_requests_adapter)
-                # Additional header works, but the improvement is immeasurable for
-                # me. (less than SF speed fluctuation)
-                # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'}
+                # Additional headers do work, but these 'compression' and 'keep-alive'
+                # are use by the requests package by default. So, no difference
+                # sf_session.headers.update({'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'})
                 self._sf_session = sf_session
 
     @property
@@ -154,19 +147,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         # SF REST API uses autocommit, but until rollback it is not a
         # serious problem to ignore autocommit off
         pass
-
-    def validate_settings(self, d):
-        for k in ('ENGINE', 'CONSUMER_KEY', 'CONSUMER_SECRET', 'USER', 'PASSWORD', 'HOST'):
-            if(k not in d):
-                raise ImproperlyConfigured("Required '%s' key missing from '%s' database settings." % (k, self.alias))
-            elif not(d[k]):
-                raise ImproperlyConfigured("'%s' key is the empty string in '%s' database settings." % (k, self.alias))
-
-        try:
-            urlparse(d['HOST'])
-        except Exception as e:
-            raise ImproperlyConfigured("'HOST' key in '%s' database settings should be a valid URL: %s" %
-                                       (self.alias, e))
 
     def cursor(self, query=None):
         """
