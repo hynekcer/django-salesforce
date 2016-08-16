@@ -21,12 +21,17 @@ import hmac
 import logging
 import threading
 
-from django.db import connections
 import requests
 from requests.adapters import HTTPAdapter
 from requests.auth import AuthBase
+from django.utils.module_loading import import_string
+from django.core.exceptions import ImproperlyConfigured
 from salesforce.dbapi import get_max_retries
 from salesforce.dbapi.exceptions import DatabaseError, IntegrityError
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
 # TODO hy: more advanced methods with ouathlib can be implemented, but
 #      the simple doesn't require a special package.
@@ -48,10 +53,10 @@ class SalesforceAuth(AuthBase):
     specific parameters for specific auth methods.
 
     required public methods:
-        __ini__(db_alias, .. optional params, _session)  It sets the parameters
+        __ini__(db_alias, settings_dict, _session=None)  It sets the parameters
                             that needed to authenticate later by the respective
                             type of authentication.
-                            A non-default `_session` for `requests` can be provided,
+                            A `_session` for `requests` can be provided,
                             especially for tests.
         authenticate():     Ask for a new token (customizable method)
 
@@ -77,20 +82,22 @@ class SalesforceAuth(AuthBase):
 
     http://docs.python-requests.org/en/latest/user/advanced/#custom-authentication
     """
+    can_reauthenticate = False
+    required_fields = ()
 
-    def __init__(self, db_alias, settings_dict=None, _session=None):
+    def __init__(self, db_alias, settings_dict, _session=None):
         """
         Set values for authentication
             Params:
                 db_alias:  The database alias e.g. the default SF alias 'salesforce'.
-                settings_dict: It is only important for the first connecting.
-                        It should be taken from django.conf.DATABASES['salesforce'],
-                        because it is not known initially in the connection.settings_dict.
+                settings_dict: the documentation here in README and in:
+                    https://docs.djangoproject.com/en/1.10/ref/settings/#databases
                 _session: Only for tests
         """
         self.db_alias = db_alias
         self.dynamic = None
-        self.settings_dict = settings_dict or connections[db_alias].settings_dict
+        self.settings_dict = settings_dict
+        self.validate_settings()
         self._session = _session or requests.Session()
 
     def authenticate(self):
@@ -120,7 +127,8 @@ class SalesforceAuth(AuthBase):
 
     def del_token(self):
         with oauth_lock:
-            del oauth_data[self.db_alias]
+            if self.db_alias in oauth_data:
+                del oauth_data[self.db_alias]
         self.dynamic = None
 
     def __call__(self, r):
@@ -130,14 +138,15 @@ class SalesforceAuth(AuthBase):
         return r
 
     def reauthenticate(self):
-        if self.dynamic is None:
+        if self.dynamic is not None:
+            # It is expected that with dynamic authentication we get a token that
+            # is valid at least for a half of expiration time.
+            raise DatabaseError("Dynamically authenticated connection can never reauthenticate.")
+        elif not self.can_reauthenticate:
+            raise DatabaseError("This SF backend can not automatically reauthenticate the connection.")
+        else:
             self.del_token()
             return self.get_auth()['access_token']
-        else:
-            # It is expected that with dynamic authentication we get a token that
-            # is valid at least for a few future seconds, because we don't get
-            # any password or permanent permission for it from the user.
-            raise DatabaseError("Dynamically authenticated connection can never reauthenticate.")
 
     @property
     def instance_url(self):
@@ -158,6 +167,29 @@ class SalesforceAuth(AuthBase):
         """
         self.dynamic = None
 
+    def validate_settings(self):
+        for k in self.required_fields:
+            if k not in self.settings_dict:
+                raise ImproperlyConfigured("Required '%s' key missing from '%s' database settings." %
+                                           (k, self.db_alias))
+            elif not(self.settings_dict[k]):
+                raise ImproperlyConfigured("'%s' key is the empty string in '%s' database settings." %
+                                           (k, self.db_alias))
+        if 'HOST' in self.settings_dict:
+            try:
+                urlparse(self.settings_dict['HOST'])
+            except Exception as e:
+                raise ImproperlyConfigured("'HOST' key in '%s' database settings should be a valid URL: %s" %
+                                           (self.db_alias, e))
+
+    @staticmethod
+    def create_subclass_instance(db_alias, settings_dict, _session=None):
+        """Create an instance of a subclass according to settings_dict"""
+        auth_class_string = settings_dict.get('AUTH', 'salesforce.auth.SalesforcePasswordAuth')
+        subclass = import_string(auth_class_string)
+        assert issubclass(subclass, SalesforceAuth)
+        return subclass(db_alias, settings_dict, _session=_session)
+
 
 class SalesforcePasswordAuth(SalesforceAuth):
     """
@@ -166,6 +198,9 @@ class SalesforcePasswordAuth(SalesforceAuth):
     Static auth data are cached thread safely between threads. Thread safety
     is provided by the ancestor class.
     """
+    can_reauthenticate = True
+    required_fields = ('ENGINE', 'CONSUMER_KEY', 'CONSUMER_SECRET', 'USER', 'PASSWORD', 'HOST')
+
     def authenticate(self):
         """
         Authenticate to the Salesforce API with the provided credentials (password).
