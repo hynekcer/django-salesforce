@@ -24,7 +24,8 @@ class OAuthTest(TestCase):
         pass
 
     def validate_oauth(self, d):
-        for key in ('access_token', 'id', 'instance_url', 'issued_at', 'signature'):
+        # 'signature' key is not in some auth backends
+        for key in ('access_token', 'id', 'instance_url', 'issued_at'):
             if(key not in d):
                 self.fail("Missing %s key in returned oauth data." % key)
             elif(not d[key]):
@@ -37,8 +38,9 @@ class OAuthTest(TestCase):
         import requests
         _session = requests.Session()
 
-        auth_obj = auth.SalesforcePasswordAuth(sf_alias, settings_dict=settings.DATABASES[sf_alias],
-                                               _session=_session)
+        auth_obj = auth.SalesforceAuth.create_subclass_instance(sf_alias,
+                                                                settings_dict=settings.DATABASES[sf_alias],
+                                                                _session=_session)
         auth_obj.get_auth()
         self.validate_oauth(auth.oauth_data[sf_alias])
         old_data = auth.oauth_data

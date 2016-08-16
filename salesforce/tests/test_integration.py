@@ -685,6 +685,8 @@ class BasicSOQLRoTest(TestCase):
         # Simulate the same with obsoleted oauth session
         # It is not possible to use salesforce.auth.expire_token() to simulate
         # expiration because it forces reauhentication before the next request
+        if not connections[sf_alias].sf_session.auth.can_reauthenticate:
+            self.skipTest("This test require aut client that can reauthenticate")
         salesforce.auth.oauth_data[sf_alias]['access_token'] = '* something invalid *'
         Contact(pk=contact_id).delete()
         # Id of completely deleted item or fake but valid item.
@@ -718,6 +720,8 @@ class BasicSOQLRoTest(TestCase):
             c2.delete()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
+    @skipUnless(connections[sf_alias].sf_session.auth.can_reauthenticate,
+                "This test require aut client that can reauthenticate")
     def test_expired_auth_id(self):
         """Test the code for expired auth ID for multiple SF databases.
 
