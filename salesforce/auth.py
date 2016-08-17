@@ -18,7 +18,9 @@ Accepted parameters are both str or unicode in Python 2.
 import base64
 import hashlib
 import hmac
+import json
 import logging
+import os
 import threading
 
 import requests
@@ -240,3 +242,24 @@ class SalesforcePasswordAuth(SalesforceAuth):
         else:
             raise LookupError("oauth failed: %s: %s" % (settings_dict['USER'], response.text))
         return response_data
+
+
+class ForceComCliAuth(SalesforceAuth):
+    """Use an access token from Force.com CLI
+
+    https://force-cli.herokuapp.com/
+    https://github.com/heroku/force
+    """
+    required_fields = ('ENGINE', 'USER')
+
+    def authenticate(self):
+        settings_dict = self.settings_dict
+        with open(os.path.join(os.environ['HOME'], '.force', 'accounts', settings_dict['USER']), 'r') as f:
+            data = json.load(f)
+        mapping = {'AccessToken': 'access_token',
+                   'Id': 'id',
+                   'InstanceUrl': 'instance_url',
+                   'IssuedAt': 'issued_at'}
+        # 'signature' and 'token_type' are not in heroku/force data
+        auth_data = {str(v): str(data[k]) for k, v in mapping.items()}
+        return auth_data
