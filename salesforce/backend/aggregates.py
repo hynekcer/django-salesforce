@@ -9,18 +9,17 @@
 Aggregates like COUNT(), MAX(), MIN() are customized here.
 """
 from django.db.models.aggregates import *  # NOQA
-from django.db.models.aggregates import Aggregate
+import django.db.models.aggregates
 
 
-class Count(Aggregate):
+class Count(django.db.models.aggregates.Count):
     """
-    A customized Count class that uses the COUNT() syntax instead of COUNT(*).
+    A customized Count class that supports COUNT_DISTINCT(field_name).
     """
-    is_ordinal = True
-    sql_function = 'COUNT'
-    sql_template = '%(function)s(%(distinct)s%(field)s)'
-
-    def __init__(self, col, distinct=False, **extra):
-        if(col == '*'):
-            col = ''
-        super(Count, self).__init__(col, distinct=distinct and 'DISTINCT ' or '', **extra)
+    def as_salesforce(self, compiler, connection):
+        sql, params = super(Count, self).as_sql(compiler, connection)
+        if self.extra['distinct']:
+            sql = sql.replace('COUNT(DISTINCT ', 'COUNT_DISTINCT(')
+        if '(*)' in sql:
+            sql = sql.replace('(*)', '()')
+        return sql, params

@@ -28,6 +28,8 @@ from salesforce.backend import manager
 from salesforce.fields import SalesforceAutoField, SF_PK, SfField, ForeignKey
 from salesforce.fields import DEFAULTED_ON_CREATE, NOT_UPDATEABLE, NOT_CREATEABLE, READ_ONLY
 from salesforce.fields import *  # NOQA - imports for other modules
+from django.db.models.aggregates import *  # NOQA
+from salesforce.backend.aggregates import Count  # NOQA - overrides Django
 
 __all__ = ('SalesforceModel', 'Model', 'DEFAULTED_ON_CREATE', 'PROTECT', 'DO_NOTHING', 'SF_PK', 'SfField',
            'NOT_UPDATEABLE', 'NOT_CREATEABLE', 'READ_ONLY')
