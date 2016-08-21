@@ -250,7 +250,7 @@ class CursorWrapper(object):
         self.rowcount = None
         self.db.last_chunk_len = None
         sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
-        if sqltype == 'SELECT' and not sql.upper().startswith('SELECT COUNT() FROM'):
+        if sqltype == 'SELECT':
             self.qquery = QQuery(sql)
             self.description = [(alias, None, None, None, name) for alias, name in
                                 zip(self.qquery.aliases, self.qquery.fields)]
@@ -258,59 +258,50 @@ class CursorWrapper(object):
             data = response.json(parse_float=decimal.Decimal)
             if 'totalSize' in data:
                 self.rowcount = data['totalSize']
-                if self.query:
-                    self.query.last_chunk_len = len(data['records'])
-                self.first_row = data['records'][0] if data['records'] else None
+                if sql.upper().startswith('SELECT COUNT() FROM'):
+                    # COUNT() queries in SOQL are a special case, as they don't actually return rows
+                    self.results = iter([[self.rowcount]])
+                else:
+                    if self.query:
+                        self.query.last_chunk_len = len(data['records'])
+                    self.first_row = data['records'][0] if data['records'] else None
+                    self.results = self.qquery.parse_rest_response(response, self, self.row_type)
             else:
                 raise DatabaseError(data)
-            self.results = self.qquery.parse_rest_response(response, self, self.row_type)
-            return
-        elif isinstance(self.query, subqueries.InsertQuery):
-            response = self.execute_insert(self.query)
-        elif isinstance(self.query, subqueries.UpdateQuery):
-            response = self.execute_update(self.query)
-        elif isinstance(self.query, subqueries.DeleteQuery):
-            response = self.execute_delete(self.query)
+        elif sqltype in ('INSERT', 'UPDATE', 'DELETE'):
+            if isinstance(self.query, subqueries.InsertQuery):
+                response = self.execute_insert(self.query)
+            elif isinstance(self.query, subqueries.UpdateQuery):
+                response = self.execute_update(self.query)
+            elif isinstance(self.query, subqueries.DeleteQuery):
+                response = self.execute_delete(self.query)
+
+            if response and isinstance(response, list):
+                # bulk operation SOAP
+                if all(x['success'] for x in response):
+                    self.lastrowid = [item['id'] for item in response]
+            # the encoding is detected automatically, e.g. from headers
+            elif(response and response.text):
+                # parse_float set to decimal.Decimal to avoid precision errors when
+                # converting from the json number to a float and then to a Decimal object
+                # on a model's DecimalField. This converts from json number directly
+                # to a Decimal object
+                data = response.json(parse_float=decimal.Decimal)
+                if('success' in data and 'id' in data):
+                    self.lastrowid = data['id']
+                    return
+                elif data['hasErrors'] is False:
+                    # save id from bulk_create even if Django don't use it
+                    if data['results'] and data['results'][0]['result']:
+                        self.lastrowid = [item['result']['id'] for item in data['results']]
+                    return
+                # something we don't recognize
+                else:
+                    raise DatabaseError(data)
+            else:
+                self.results = iter([])
         else:
             raise DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
-
-        if response and isinstance(response, list):
-            # bulk operation SOAP
-            if all(x['success'] for x in response):
-                self.lastrowid = [item['id'] for item in response]
-        # the encoding is detected automatically, e.g. from headers
-        elif(response and response.text):
-            # parse_float set to decimal.Decimal to avoid precision errors when
-            # converting from the json number to a float and then to a Decimal object
-            # on a model's DecimalField. This converts from json number directly
-            # to a Decimal object
-            data = response.json(parse_float=decimal.Decimal)
-            # a SELECT query
-            if('totalSize' in data):
-                self.rowcount = data['totalSize']
-            # a successful INSERT query, return after getting PK
-            elif('success' in data and 'id' in data):
-                self.lastrowid = data['id']
-                return
-            elif data['hasErrors'] is False:
-                # save id from bulk_create even if Django don't use it
-                if data['results'] and data['results'][0]['result']:
-                    self.lastrowid = [item['result']['id'] for item in data['results']]
-                return
-            # something we don't recognize
-            else:
-                raise DatabaseError(data)
-
-            if sql.upper().startswith('SELECT COUNT() FROM'):
-                # COUNT() queries in SOQL are a special case, as they don't actually return rows
-                self.results = iter([[self.rowcount]])
-            else:
-                if self.query:
-                    self.db.last_chunk_len = len(data['records'])
-                self.first_row = data['records'][0] if data['records'] else None
-                self.results = self.query_results(data)
-        else:
-            self.results = iter([])
 
     def execute_select(self, q, args):
         processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
