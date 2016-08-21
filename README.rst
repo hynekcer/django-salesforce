@@ -244,8 +244,6 @@ here are the potential pitfalls and unimplemented operations:
    types on Salesforce must extend salesforce.models.SalesforceModel. The
    model router checks for this to determine which models to handle through
    the Salesforce connection.
--  **Multiple Updates** — Multiple update support is not yet
-   implemented.
 -  **Multiple Deletes** — Multiple delete support is not yet
    implemented.
 -  **Database Sync** — ``syncdb`` will only create new databases in non-SF
