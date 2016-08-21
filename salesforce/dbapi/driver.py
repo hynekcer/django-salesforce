@@ -15,7 +15,7 @@ import logging
 import re
 import requests
 import socket
-# import time
+import time
 # import weakref
 
 import pytz
@@ -245,11 +245,9 @@ class CursorWrapper(object):
         """
         Send a query to the Salesforce API.
         """
-        # from salesforce.backend.sql_query import SalesforceQuery, SalesforceRawQuery
         self.rowcount = None
         self.db.last_chunk_len = None
         sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
-        # TODO
         if sqltype == 'SELECT' and not sql.upper().startswith('SELECT COUNT() FROM'):
             self.qquery = QQuery(sql)
             self.description = [(alias, None, None, None, name) for alias, name in
@@ -265,13 +263,6 @@ class CursorWrapper(object):
                 raise DatabaseError(data)
             self.results = self.qquery.parse_rest_response(response, self, self.row_type)
             return
-            # pdb.set_trace()
-
-        # elif isinstance(self.query, SalesforceQuery) or self.query is None:
-        #     response = self.execute_select(sql, args)
-        #     # print("response : %s" % response.text)
-        # elif isinstance(self.query, SalesforceRawQuery):
-        #    response = self.execute_select(sql, args)
         elif isinstance(self.query, subqueries.InsertQuery):
             response = self.execute_insert(self.query)
         elif isinstance(self.query, subqueries.UpdateQuery):
@@ -395,7 +386,6 @@ class CursorWrapper(object):
                                       for x in pk
                                       ]
                 }
-                import time
                 headers.update({'If-Unmodified-Since': time.strftime('%a, %d %b %Y %H:%M:%S GMT',
                                (last_mod + datetime.timedelta(seconds=0)).timetuple())})
                 _ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
@@ -550,7 +540,6 @@ class Connection(object):
         self.use_introspection = params.pop('use_introspection', True)
         # ...
         self._connection = True  # ...
-        # import pdb; pdb.set_trace()
         pass
 
     def close(self):
@@ -767,7 +756,6 @@ def str_dict(some_dict):
 # fix dep TIME_ZONE
 def date_literal(d):
     if not d.tzinfo:
-        import time
         tz = pytz.timezone(settings.TIME_ZONE)
         d = tz.localize(d, is_dst=time.daylight)
     # Format of `%z` is "+HHMM"

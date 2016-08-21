@@ -167,6 +167,7 @@ SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 SF_DATETIME_PATTERN = re.compile(r'[1-3]\d{3}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-6]\d.\d{3}\+0000$')
 text_type = type(u'')
 
+
 def fix_data_type(data, tzinfo=None):
     if isinstance(data, text_type) and SF_DATETIME_PATTERN.match(data):
         d = datetime.datetime.strptime(data, SALESFORCE_DATETIME_FORMAT)
