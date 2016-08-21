@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.db import connections
 from salesforce.testrunner.example.models import User
-from requests.exceptions import ConnectionError
+from requests.exceptions import MissingSchema
 
 
 class DynamicAuthTest(TestCase):
@@ -9,7 +9,7 @@ class DynamicAuthTest(TestCase):
         with self.assertRaises(Exception) as cm:
             len(queryset)
         exc = cm.exception
-        self.assertTrue(isinstance(exc, (ConnectionError, LookupError, KeyError)))
+        self.assertTrue(isinstance(exc, MissingSchema))
 
     def test_dynamic_auth(self):
         """
