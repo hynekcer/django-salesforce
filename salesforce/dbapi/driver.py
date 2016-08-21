@@ -533,9 +533,9 @@ class Connection(object):
                     ``errorhandler(connection, cursor, errorclass, errorvalue)``
             use_introspection: bool
     """
-    # close and commit can be safely ignored because everything is
-    # committed automatically and REST is stateles. They are
-    # unconditionally required by Django 1.6+.
+    # `close` and `commit` methods are required by Django. They can be
+    # eventually safely ignored because everything is committed
+    # automatically. The REST API is stateless.
 
     Error = Error
     InterfaceError = InterfaceError
