@@ -8,11 +8,7 @@ DATABASES = {
     'salesforce_copy': DATABASES['salesforce'],
     'salesforce': {
         'ENGINE': 'salesforce.backend',
-        'HOST': 'https://nonsense.example.com',
-        'CONSUMER_KEY': '.',
-        'CONSUMER_SECRET': '.',
-        'USER': 'dynamic auth',
-        'PASSWORD': '.',
+        'AUTH': 'salesforce.auth.DynamicAuth',
     }
 }
 INSTALLED_APPS += ('tests.test_dynamic_auth',)

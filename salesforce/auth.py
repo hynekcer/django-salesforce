@@ -263,3 +263,10 @@ class ForceComCliAuth(SalesforceAuth):
         # 'signature' and 'token_type' are not in heroku/force data
         auth_data = {str(v): str(data[k]) for k, v in mapping.items()}
         return auth_data
+
+
+class DynamicAuth(SalesforceAuth):
+    required_fields = ('ENGINE',)
+
+    def authenticate(self):
+        return {'instance_url': self.settings_dict.get('HOST', 'https://')}
