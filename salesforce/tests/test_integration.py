@@ -651,6 +651,14 @@ class BasicSOQLRoTest(TestCase):
         self.assertGreaterEqual(contact_aggregate['expr0'], 1)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
+    def test_cursor_simple_aggregate(self):
+        cursor = connections[sf_alias].cursor()
+        cursor.execute("SELECT COUNT() FROM Contact")
+        row, = cursor.fetchall()
+        self.assertEqual(len(row), 1)
+        self.assertIsInstance(row[0], int)
+
+    @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_errors(self):
         """Test for improving code coverage.
         """
@@ -758,11 +766,6 @@ class BasicSOQLRoTest(TestCase):
         finally:
             for x in objects:
                 x.delete()
-
-    # This should not be implemented due to Django conventions.
-    # def test_raw_aggregate(self):
-    #    # raises "TypeError: list indices must be integers, not str"
-    #    list(Contact.objects.raw("select Count() from Contact"))
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_only_fields(self):
