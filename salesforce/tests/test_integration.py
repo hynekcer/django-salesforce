@@ -12,10 +12,11 @@ import pytz
 
 from django.conf import settings
 from django.db import connections
-from django.db.models import Q, Avg, Count, Sum, Min, Max
+from django.db.models import Q
 from django.test import TestCase
 from django.utils import timezone
 
+from salesforce.models import Avg, Count, Sum, Min, Max
 from salesforce.testrunner.example.models import (
     Account, Contact, Lead, User,
     ApexEmailNotification, BusinessHours, Campaign, CronTrigger,
@@ -589,6 +590,20 @@ class BasicSOQLRoTest(TestCase):
             # dependent PricebookEntries are just deleted automatically by SF
             test_product.delete()
             test_product2.delete()
+
+    @skipUnless(default_is_sf, "Default database should be any Salesforce.")
+    def test_annotate_count_distinct(self):
+        qs = Contact.objects.values('first_name').annotate(Count('last_name', distinct=True))
+        sql, params = qs.query.get_compiler('salesforce').as_sql()
+        expected_sql = ("SELECT Contact.FirstName, COUNT_DISTINCT(Contact.LastName) last_name__count "
+                        "FROM Contact GROUP BY Contact.FirstName")
+        self.assertEqual(sql, expected_sql)
+
+    @skipUnless(default_is_sf, "Default database should be any Salesforce.")
+    def test_aggregate_count_distinct(self):
+        result = Contact.objects.aggregate(Count('last_name', distinct=True))
+        self.assertEqual(list(result.keys()), ['last_name__count'])
+        self.assertIsInstance(result['last_name__count'], int)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_z_big_query(self):
