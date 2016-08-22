@@ -27,7 +27,7 @@ from salesforce.testrunner.example.models import (
 from salesforce import router
 import salesforce
 from ..backend.test_helpers import skip, skipUnless, expectedFailure, expectedFailureIf  # NOQA test decorators
-from ..backend.test_helpers import (current_user, default_is_sf, sf_alias, uid_version as uid,
+from ..backend.test_helpers import (get_current_user, default_is_sf, sf_alias, uid_version as uid,
                                     QuietSalesforceErrors)
 
 import logging
@@ -67,8 +67,11 @@ class BasicSOQLRoTest(TestCase):
                 contact = Contact(first_name='sf_test demo', last_name='Test %d' % i)
                 contact.save()
         if User.objects.count() == 0:
-            user = User(Username=current_user)
+            user = User(Username=get_current_user())
             user.save()
+
+    def setUp(self):
+        self.current_user = get_current_user()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_raw(self):
@@ -103,14 +106,14 @@ class BasicSOQLRoTest(TestCase):
     def test_foreign_key(self):
         """Verify that the owner of an Contact is the currently logged admin.
         """
-        current_sf_user = User.objects.get(Username=current_user)
+        current_sf_user = User.objects.get(Username=self.current_user)
         test_contact = Contact(first_name='sf_test', last_name='my')
         test_contact.save()
         try:
             contact = Contact.objects.filter(owner=current_sf_user)[0]
             user = contact.owner
             # This user can be e.g. 'admins@freelancersunion.org.prod001'.
-            self.assertEqual(user.Username, current_user)
+            self.assertEqual(user.Username, self.current_user)
         finally:
             test_contact.delete()
 
@@ -133,7 +136,7 @@ class BasicSOQLRoTest(TestCase):
         # test 1a is unique field
         self.assertEqual(ApexEmailNotification._meta.get_field('user').unique, True)
 
-        current_sf_user = User.objects.get(Username=current_user)
+        current_sf_user = User.objects.get(Username=self.current_user)
         orig_objects = list(ApexEmailNotification.objects.filter(
             Q(user=current_sf_user) | Q(email='apex.bugs@example.com')
         ))
@@ -165,7 +168,7 @@ class BasicSOQLRoTest(TestCase):
 
             # test 2: the reverse relation is a value, not a set
             result = User.objects.exclude(apex_email_notification__user=None)
-            self.assertIn(current_user, [x.Username for x in result])
+            self.assertIn(self.current_user, [x.Username for x in result])
 
             # test 3: relation to the parent
             result = ApexEmailNotification.objects.filter(user__Username=notifier_u.user.Username)
@@ -223,11 +226,11 @@ class BasicSOQLRoTest(TestCase):
         contact = Contact(first_name='sf_test', last_name='my')
         contact.save()
         try:
-            self.assertEqual(refresh(contact).owner.Username, current_user)
+            self.assertEqual(refresh(contact).owner.Username, self.current_user)
         finally:
             contact.delete()
         # Verify that an explicit value is possible for this field.
-        other_user_obj = User.objects.exclude(Username=current_user).filter(IsActive=True)[0]
+        other_user_obj = User.objects.exclude(Username=self.current_user).filter(IsActive=True)[0]
         contact = Contact(first_name='sf_test', last_name='your',
                           owner=other_user_obj)
         contact.save()
@@ -418,14 +421,14 @@ class BasicSOQLRoTest(TestCase):
     def test_similarity_filter_operators(self):
         """Test filter operators that use LIKE 'something%' and similar.
         """
-        User.objects.get(Username__exact=current_user)
-        User.objects.get(Username__iexact=current_user.upper())
-        User.objects.get(Username__contains=current_user[1:-1])
-        User.objects.get(Username__icontains=current_user[1:-1].upper())
-        User.objects.get(Username__startswith=current_user[:-1])
-        User.objects.get(Username__istartswith=current_user[:-1].upper())
-        User.objects.get(Username__endswith=current_user[1:])
-        User.objects.get(Username__iendswith=current_user[1:].upper())
+        User.objects.get(Username__exact=self.current_user)
+        User.objects.get(Username__iexact=self.current_user.upper())
+        User.objects.get(Username__contains=self.current_user[1:-1])
+        User.objects.get(Username__icontains=self.current_user[1:-1].upper())
+        User.objects.get(Username__startswith=self.current_user[:-1])
+        User.objects.get(Username__istartswith=self.current_user[:-1].upper())
+        User.objects.get(Username__endswith=self.current_user[1:])
+        User.objects.get(Username__iendswith=self.current_user[1:].upper())
         # Operators regex and iregex not tested because they are not supported.
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
@@ -699,7 +702,7 @@ class BasicSOQLRoTest(TestCase):
         the same way like "DELETE FROM Contact WHERE Id='deleted yet'" would do.
         """
         contact = Contact(last_name='sf_test',
-                          owner=User.objects.get(Username=current_user))
+                          owner=User.objects.get(Username=self.current_user))
         contact.save()
         contact_id = contact.pk
         Contact(pk=contact_id).delete()
@@ -736,7 +739,7 @@ class BasicSOQLRoTest(TestCase):
             self.assertNotEqual(user1._state.db, user2._state.db)
             self.assertNotEqual(username1, username2)
             expected_user2 = connections[other_db].settings_dict['USER']
-            self.assertEqual(username1, current_user)
+            self.assertEqual(username1, self.current_user)
             self.assertEqual(username2, expected_user2)
         finally:
             c1.delete()
@@ -848,8 +851,8 @@ class BasicSOQLRoTest(TestCase):
         test_lead.save()
         try:
             qs = Lead.objects.filter(pk=test_lead.pk,
-                                     owner__Username=current_user,
-                                     last_modified_by__Username=current_user)
+                                     owner__Username=self.current_user,
+                                     last_modified_by__Username=self.current_user)
             # Verify that a coplicated analysis is not performed on old Django
             # so that the query can be at least somehow simply compiled to SOQL
             # without exceptions, in order to prevent regressions.
@@ -875,8 +878,8 @@ class BasicSOQLRoTest(TestCase):
         test_task.save()
         try:
             qs = Task.objects.filter(who__in=Lead.objects.filter(pk=test_lead.pk,
-                                     owner__Username=current_user,
-                                     last_modified_by__Username=current_user))
+                                     owner__Username=self.current_user,
+                                     last_modified_by__Username=self.current_user))
             sql, params = qs.query.get_compiler('salesforce').as_sql()
             self.assertRegexpMatches(sql, 'SELECT Task.Id, .* FROM Task WHERE Task.WhoId IN \(SELECT ')
             self.assertIn('Lead.Owner.Username = %s', sql)
@@ -966,7 +969,7 @@ class BasicLeadSOQLTest(TestCase):
         if not default_is_sf:
             add_obj(Contact(last_name='Test contact 1'))
             add_obj(Contact(last_name='Test contact 2'))
-            add_obj(User(Username=current_user))
+            add_obj(User(Username=get_current_user()))
 
     def tearDown(self):
         """Clean up our test records.

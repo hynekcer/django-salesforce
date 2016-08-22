@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from django.test import TestCase
 from tests.test_mixin.models import Account, Contact, Proxy2Contact
-from salesforce.backend.test_helpers import current_user, uid_version as uid
+from salesforce.backend.test_helpers import get_current_user, uid_version as uid
 
 
 def refresh(obj):
@@ -24,7 +24,7 @@ class MixinTest(TestCase):
         try:
             test_contact = refresh(test_contact)
             # verify foreign keys to and from the complicated model
-            self.assertEqual(test_contact.account.owner.username, current_user)
+            self.assertEqual(test_contact.account.owner.username, get_current_user())
             contacts = Contact.objects.filter(account__name='sf_test account' + uid)  # description='experimental')
             self.assertGreaterEqual(len(contacts), 1)
             repr(test_contact.__dict__)
