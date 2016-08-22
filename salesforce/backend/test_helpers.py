@@ -7,6 +7,7 @@ import uuid
 
 import django
 from django.conf import settings
+from django.db import connections
 from salesforce import router
 
 # uid strings for tests that accidentally run concurrent
@@ -16,7 +17,10 @@ uid_version = 'py{0}{1}-dj{2}{3}'.format(*(sys.version_info[:2] + django.VERSION
 
 sf_alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
 default_is_sf = router.is_sf_database(sf_alias)
-current_user = settings.DATABASES[sf_alias]['USER']
+
+
+def get_current_user():
+    return connections[sf_alias].settings_dict['USER']
 
 
 def expectedFailureIf(condition):

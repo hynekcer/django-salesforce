@@ -2,7 +2,7 @@
 from __future__ import absolute_import
 from django.test import TestCase
 from tests.test_compatibility.models import Lead
-from salesforce.backend.test_helpers import current_user, uid_version as uid
+from salesforce.backend.test_helpers import get_current_user, uid_version as uid
 
 
 class CompatibilityTest(TestCase):
@@ -12,7 +12,7 @@ class CompatibilityTest(TestCase):
         try:
             refreshed_lead = Lead.objects.get(Id=test_lead.Id)
             self.assertEqual(refreshed_lead.Id, test_lead.Id)
-            self.assertEqual(refreshed_lead.Owner.Username, current_user)
+            self.assertEqual(refreshed_lead.Owner.Username, get_current_user())
             leads = Lead.objects.filter(Company='sf_test lead' + uid, LastName='name')
             self.assertGreaterEqual(len(leads), 1)
             repr(test_lead.__dict__)
