@@ -9,7 +9,7 @@ class DynamicAuthTest(TestCase):
         with self.assertRaises(Exception) as cm:
             len(queryset)
         exc = cm.exception
-        self.assertTrue(isinstance(exc, MissingSchema))
+        self.assertIsInstance(exc, MissingSchema)
 
     def test_dynamic_auth(self):
         """

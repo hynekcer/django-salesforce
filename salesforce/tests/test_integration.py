@@ -380,7 +380,7 @@ class BasicSOQLRoTest(TestCase):
         triggers = CronTrigger.objects.all()
         if not triggers:
             self.skipTest("No object with milisecond resolution found.")
-        self.assertTrue(isinstance(triggers[0].PreviousFireTime, datetime.datetime))
+        self.assertIsInstance(triggers[0].PreviousFireTime, datetime.datetime)
         # The reliability of this is only 99.9%, therefore it is commented out.
         # self.assertNotEqual(trigger.PreviousFireTime.microsecond, 0)
 
@@ -391,7 +391,7 @@ class BasicSOQLRoTest(TestCase):
         """
         obj_orig = BusinessHours.objects.all()[0]
         obj = refresh(obj_orig)
-        self.assertTrue(isinstance(obj.MondayStartTime, datetime.time))
+        self.assertIsInstance(obj.MondayStartTime, datetime.time)
         obj.MondayStartTime = datetime.time(23, 59)
         obj.save()
         obj = refresh(obj)
@@ -835,7 +835,8 @@ class BasicSOQLRoTest(TestCase):
     def test_incomplete_raw(self):
         qs = Contact.objects.raw("select id from Contact")
         last_name = qs[0].last_name
-        self.assertTrue(last_name and 'LastName' not in last_name)
+        self.assertTrue(last_name)
+        self.assertNotIn('LastName', last_name)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_filter_by_more_fk_to_the_same_model(self):

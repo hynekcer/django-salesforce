@@ -59,7 +59,7 @@ class ExportedModelTest(unittest.TestCase):
                 self.assertNotIn('LastModifiedDate', text)
 
     def test_nice_standard_class_name(self):
-        self.assertTrue('AccountContactRole' in classes_texts.keys())
+        self.assertIn('AccountContactRole', list(classes_texts.keys()))
 
     def test_custom_test_class(self):
         """Test the typical nice class name 'Test'."""

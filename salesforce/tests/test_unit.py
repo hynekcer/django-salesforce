@@ -32,7 +32,7 @@ class TestField(TestCase):
         """
         class Ab(models.SalesforceModel):
             pass
-        self.assertTrue(isinstance(fields.SF_PK, str))
+        self.assertIsInstance(fields.SF_PK, str)
         self.assertTrue(hasattr(Ab(), 'pk'))
         self.assertTrue(hasattr(Ab(), fields.SF_PK))
 
@@ -111,7 +111,7 @@ class TestQueryCompiler(TestCase):
         request_count_0 = salesforce.dbapi.driver.request_count
         self.assertEqual(tuple(Contact.objects.none()), ())
         self.assertEqual(tuple(Contact.objects.all().none().all()), ())
-        self.assertTrue('[]' in repr(Contact.objects.none()))
+        self.assertIn('[]', repr(Contact.objects.none()))
         self.assertEqual(salesforce.dbapi.driver.request_count, request_count_0,
                          "Do database requests should be done with .none() method")
 
