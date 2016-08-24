@@ -1,4 +1,21 @@
-The package `requests <http://python-requests.org>`__ doesn't provide an easy way
+**TL;DR**  
+
+If the critical update "Require TLS 1.1 or higher for HTTPS connections" is activated in your organization SFDC Setup, you  must **upgrade django-salesforce to** version **0.6.3 or** you must **add this setting** to your project `settings.py`. ::
+
+        import ssl
+        SF_SSL = {'ssl_version': ssl.PROTOCOL_SSLv23}
+
+Otherwise you will see the error message::
+
+        SalesforceError: TLS 1.0 has been disabled in this organization.
+                         Please use TLS 1.1 or higher when connecting to Salesforce using https.
+        errorCode: UNSUPPORTED_CLIENT
+
+Because TLS >= 1.1 is required on SFDC sandboxes and it will be activated also on production SFDC sites automatically after March 2017, all SF_SSL settings are removed in django-salesforce 0.7+ as unimportant.
+
+----
+
+**Details about obsoleted software**: The package `requests <http://python-requests.org>`__ doesn't provide an easy way
 to set the minimum required SSL/TLS version while ensuring use of the highest
 version that is available on both sides.
 (`requests issue 2118 <https://github.com/kennethreitz/requests/issues/2118>`__)
@@ -12,10 +29,11 @@ The required version can be set in settings.py to one of reasonable values ::
    versions of Python, requests, pyOpenSSL, and installed versions of OpenSSL/libssl.
 
 -  `ssl.PROTOCOL_TLSv1` - This will pin the communication protocol to TLS 1.0.
-   This must be changed to `PROTOCOL_SSLv23` once SFDC disables TLS 1.0.
+   That can be useful with old Python + SSL that has not disabled the insecure SSLv2 and 3 protocols.
+   Such old software doesn't support TLSv1.1 or 1.2 anyway.
+   The software and settings must be upgraded to `PROTOCOL_SSLv23` before SFDC disables TLS 1.0.
 
-The default for django-salesforce is currently `PROTOCOL_TLSv1` in hopes of reducing
-compatibility issues. If you have Python 2.7.9 and newer or Python 3.4.0 and newer,
+If you have Python 2.7.9 and newer or Python 3.4.0 and newer,
 the old insecure protocols including SSL v3 are disabled unless you've installed
 PyOpenSSL. As long as you have *not* installed PyOpenSSL, it's recommended you
 update your settings to use `PROTOCOL_SSLv23`.

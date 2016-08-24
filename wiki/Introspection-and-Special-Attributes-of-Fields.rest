@@ -100,3 +100,6 @@ SOAP API
    should not be empty at the time of conversion. Follow the
    `instructions <http://www.python.org/https://help.salesforce.com/apex/HTViewHelpDoc?id=customize_mapleads.htm>`__
    for more details.
+
+   If you're converting leads while using dynamic authentication (to forward client-side
+   SFDC credentials) you will want to be aware of `this bug <https://github.com/django-salesforce/django-salesforce/issues/106>`__.
