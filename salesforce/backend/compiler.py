@@ -175,6 +175,8 @@ class SQLCompiler(compiler.SQLCompiler):
                     params.extend(s_params)
                     out_cols.append(s_sql)
 
+                if from_ == ['Account']:
+                    out_cols = [re.sub(r'^Account\.', '', x) for x in out_cols]
                 result.append(','.join(out_cols))
 
                 result.append('FROM')
