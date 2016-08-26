@@ -12,13 +12,9 @@ conversion).
 """
 
 from django.db import connections
-from .dbapi.driver import DatabaseError, InterfaceError
+from salesforce.dbapi.driver import DatabaseError, InterfaceError
+from salesforce.dbapi import beatbox
 import salesforce
-
-try:
-    import beatbox
-except ImportError:
-    beatbox = None
 
 
 def get_soap_client(db_alias, client_class=None):

@@ -9,13 +9,12 @@ import itertools
 
 import django.db.backends.utils
 from django.utils.deconstruct import deconstructible
-
-from salesforce import DJANGO_19_PLUS
-import salesforce.dbapi.driver
-
 from django.db.backends.base.operations import BaseDatabaseOperations
 
-BULK_BATCH_SIZE = 200 if salesforce.dbapi.driver.beatbox else 25
+from salesforce import dbapi, DJANGO_19_PLUS
+
+
+BULK_BATCH_SIZE = 200 if dbapi.beatbox else 25
 
 """
 Default database operations, with unquoted names.
