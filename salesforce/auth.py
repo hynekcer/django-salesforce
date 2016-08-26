@@ -101,6 +101,7 @@ class SalesforceAuth(AuthBase):
         self.settings_dict = settings_dict
         self.validate_settings()
         self._session = _session or requests.Session()
+        self._is_sandbox = None  # cache bool if it is a sandbox
 
     def authenticate(self):
         """
@@ -162,12 +163,14 @@ class SalesforceAuth(AuthBase):
         """
         self.dynamic = {'access_token': str(access_token), 'instance_url': str(instance_url)}
         self.dynamic.update(kw)
+        self._is_sandbox = None
 
     def dynamic_end(self):
         """
         Clear the dynamic access token.
         """
         self.dynamic = None
+        self._is_sandbox = None
 
     def validate_settings(self):
         for k in self.required_fields:

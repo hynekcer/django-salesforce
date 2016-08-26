@@ -88,6 +88,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     def __init__(self, settings_dict, alias=None):
         if alias is None:
             alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
+        if not settings_dict['NAME']:
+            settings_dict['NAME'] = settings_dict['USER'] or alias
         super(DatabaseWrapper, self).__init__(settings_dict, alias)
         self.features = DatabaseFeatures(self)
         self.ops = DatabaseOperations(self)
@@ -96,13 +98,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = introspection.DatabaseIntrospection(self)
         self.validation = DatabaseValidation(self)
         self._sf_session = None
-        self._is_sandbox = None
         # configurable class Salesforce***Auth - combined with validate_setttings()
         self._sf_auth = SalesforceAuth.create_subclass_instance(db_alias=self.alias,
                                                                 settings_dict=self.settings_dict)
         # debug attributes and test attributes
         self.debug_silent = False
         self.last_chunk_len = None  # uppdated by Cursor class
+        self.is_in_test = None
         # The SFDC database is connected as late as possible if only tests
         # are running. Some tests don't require a connection.
         # import pdb; pdb.set_trace()
@@ -165,8 +167,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     @property
     def is_sandbox(self):
-        if self._is_sandbox is None:
+        if self._sf_auth._is_sandbox is None:
             cur = self.cursor()
+            cur.set_row_factory(dict)
             cur.execute("SELECT IsSandbox FROM Organization")
-            self._is_sandbox = cur.fetchone()['IsSandbox']
-        return self._is_sandbox
+            self._sf_auth._is_sandbox = cur.fetchone()['IsSandbox']
+        return self._sf_auth._is_sandbox
