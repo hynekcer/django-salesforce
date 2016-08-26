@@ -135,23 +135,110 @@ primary key ``id`` by configuring ``SF_PK='id'`` in your project settings. The p
 capitalization of ``Id`` is only for old projects, but it will stay as the default
 variant until ``django-salesforce>=0.5``.
 
+Sandbox and tests
+-----------------
+(new in 0.7)
+A ``TEST`` sandbox can be configured for a main SF database::
+
+    DATABASES = {
+        'salesforce': {
+            'BACKEND': 'salesforce.backend',
+            'HOST': 'https://login.salesforce.com',
+            'USER': 'me@example.com',
+            'PASSWORD': ...  # also other usual parameters: CONSUMER_...
+
+            'TEST': {
+                'HOST': 'https://test.salesforce.com',
+                'USER': 'me@example.com.sandbox',
+                # All authentication options can be also modified,
+                # but no BACKEND.
+            }
+        }
+    }
+
+It is recommended to develop applications and run tests in a sandbox,
+but two problems are specific to Salesforce, that are solved part way by
+django-salesforce:
+
+Synchronization of sandboxes with a production instance is slow, it can
+take several hours and Salesforce native apps expect that they must be
+tested also on the target production database before deployment.
+Something similar is called "live tests".
+
+Every API request is running on Salesforce in a separate transaction and
+tests by API are slower, however some unit tests can run first on a fast
+alternative database (sqlite3 memory) and finally everything can be
+verified by running on a sandbox.
+
+Live tests
+..........
+It is useful to run a subset of tests on the production database
+before deployment, e.g. run all read-only tests and enable write from
+some suitable setUp/tearDown, setUpClass/tearDownClass methods.
+If a test is running on a "live" database, all write is disabled by default.
+The behaviour can be configured for individual test classes and test
+methods by these decorators::
+
+    live_deny_if_write: Raise exception if the test tries to write
+    live_skip_if_write: Skip the test if it tries to write.
+    live_allow:         Allow write (i.e. allow everything)
+
+These three decorators can be nested: they set the default bahaviour on
+a TestCase for tests without a decorator. Decorators can be used also on
+setUp/tearDown methods.
+
+Decorator to skip everything after "live_skip" ignores nested decorators::
+
+    live_skip:  Skip the test or the entire TestCase on "live" databases
+
+The decorator ``live_deny_if_write`` is a useful default decorator useful
+to see the tests that write and to decide if it should be ``live_skip`` or
+``live_allow``. A synonymum "live_assert_ro" can be used instad of
+"live_deny_if_write" to mark read-only tests. The decorator 
+``live_skip_if_write`` is very easy to use, but not good for important test
+because it would not be easy to know if the test passed or has been skipped.
+
+The "live" tests can be tried on a Sandbox by this configuration settings::
+
+    SF_SANDBOX_AS_LIVE = True
+
+The default decorator can be set by a configuration variable
+``SF_LIVE_TEST_POLICY`` to possible values: ``deny_if_write`` (default),
+``skip_if_write`` or ``allow``. (No "skip", because it could not be overriden.)
+
+TODO: HIDE this, only note about customizing.
+The database can be verified in tests if it is a production database
+(not sandbox and not other type of test database) by
+``salesforce.test.sf_is_production(alias=None)``. The alias can be omitted for
+the default SF database.
+
+Fast Testing
+............
+By default, tests will be run against the SFDC connection
+specified in settings.py, which will substantially increase testing time.
+
+One way to speed this up is to change the SALESFORCE_DB_ALIAS to point to
+another DB connection (preferably SQLite) during testing using the
+``TEST_*`` settings variables. Django unit tests without SalesforceModel
+are fast everytimes. Special read only fields that are updated only by SFDC
+e.g. ``last_modified_date`` need more parameters to be possible to save them
+into an alternate database, e.g. by ``auto_now=True`` or to play with
+``null=True`` or ``default=...``.
+   
+
+Tips:
+The structure of sandbox and production databases can be easily compared
+by running ``inspectdb`` on both them and by comparison results by a visual tool.
+
+Methods setUpClass/tearDownClass are more useful than setUp/tearDown
+if the ojects created by setUp are not modified by tests.
+
 Advanced usage
 --------------
 -  **Multiple Inheritance from Abstract Models** - Many Salesforce models use
    the same sets of fields, but using a single inheritance tree would be too
    complicated and fragile. Proxy models and mixins are also supported.
 
--  **Testing** - By default, tests will be run against the SFDC connection
-   specified in settings.py, which will substantially increase testing time.
-   
-   One way to speed this up is to change the SALESFORCE_DB_ALIAS to point to
-   another DB connection (preferably SQLite) during testing using the
-   ``TEST_*`` settings variables. Django unit tests without SalesforceModel
-   are fast everytimes. Special read only fields that are updated only by SFDC
-   e.g. ``last_modified_date`` need more parameters to be possible to save them
-   into an alternate database, e.g. by ``auto_now=True`` or to play with
-   ``null=True`` or ``default=...``.
-   
 -  **Multiple SFDC connections** - In most cases, a single connection is all
    that most apps require, so the default DB connection to use for Salesforce
    is defined by the ``SALESFORCE_DB_ALIAS`` settings variable. This behavior
