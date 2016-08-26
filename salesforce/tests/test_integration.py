@@ -17,12 +17,12 @@ from django.test import TestCase
 from django.utils import timezone
 
 from salesforce.testrunner.example.models import (
-        Account, Contact, Lead, User,
-        ApexEmailNotification, BusinessHours, Campaign, CronTrigger,
-        Opportunity, OpportunityContactRole,
-        Product, Pricebook, PricebookEntry, Note, Task,
-        Organization, models_template,
-        )
+    Account, Contact, Lead, User,
+    ApexEmailNotification, BusinessHours, Campaign, CronTrigger,
+    Opportunity, OpportunityContactRole,
+    Product, Pricebook, PricebookEntry, Note, Task,
+    Organization, models_template,
+)
 from salesforce import router, DJANGO_110_PLUS
 import salesforce
 from ..backend.test_helpers import skip, skipUnless, expectedFailure, expectedFailureIf  # NOQA test decorators
@@ -74,9 +74,8 @@ class BasicSOQLRoTest(TestCase):
 
         (At least 3 manually created Contacts must exist before these read-only tests.)
         """
-        contacts = Contact.objects.raw(
-                "SELECT Id, LastName, FirstName FROM Contact "
-                "LIMIT 2", translation={'id': 'Id'})
+        contacts = Contact.objects.raw("SELECT Id, LastName, FirstName FROM Contact "
+                                       "LIMIT 2", translation={'id': 'Id'})
         self.assertEqual(len(contacts), 2)
         # It had a side effect that the same assert failed second times.
         self.assertEqual(len(contacts), 2)
@@ -86,9 +85,8 @@ class BasicSOQLRoTest(TestCase):
     def test_raw_foreignkey_id(self):
         """Get the first two contacts by raw query with a ForeignKey id field.
         """
-        contacts = Contact.objects.raw(
-                "SELECT Id, LastName, FirstName, OwnerId FROM Contact "
-                "LIMIT 2")
+        contacts = Contact.objects.raw("SELECT Id, LastName, FirstName, OwnerId FROM Contact "
+                                       "LIMIT 2")
         self.assertEqual(len(contacts), 2)
         '%s' % contacts[0].__dict__  # Check that all fields are accessible
         self.assertIn('@', contacts[0].owner.Email)
@@ -135,7 +133,8 @@ class BasicSOQLRoTest(TestCase):
 
         current_sf_user = User.objects.get(Username=current_user)
         orig_objects = list(ApexEmailNotification.objects.filter(
-                Q(user=current_sf_user) | Q(email='apex.bugs@example.com')))
+            Q(user=current_sf_user) | Q(email='apex.bugs@example.com')
+        ))
         _ = orig_objects  # NOQA
         try:
             notifier_u = current_sf_user.apex_email_notification
@@ -200,10 +199,9 @@ class BasicSOQLRoTest(TestCase):
         """Test inserting a date.
         """
         now = timezone.now().replace(microsecond=0)
-        contact = Contact(
-                first_name='Joe',
-                last_name='Freelancer',
-                email_bounced_date=now)
+        contact = Contact(first_name='Joe',
+                          last_name='Freelancer',
+                          email_bounced_date=now)
         contact.save()
         try:
             self.assertEqual(refresh(contact).email_bounced_date, now)
@@ -231,8 +229,7 @@ class BasicSOQLRoTest(TestCase):
                           owner=other_user_obj)
         contact.save()
         try:
-            self.assertEqual(
-                    refresh(contact).owner.Username, other_user_obj.Username)
+            self.assertEqual(refresh(contact).owner.Username, other_user_obj.Username)
         finally:
             contact.delete()
 
@@ -245,10 +242,10 @@ class BasicSOQLRoTest(TestCase):
         test_contact.save()
         try:
             contacts = Contact.objects.filter(
-                    Q(account__isnull=True) | Q(account=None),
-                    account=None,
-                    account__isnull=True,
-                    first_name='sf_test'
+                Q(account__isnull=True) | Q(account=None),
+                account=None,
+                account__isnull=True,
+                first_name='sf_test'
             )
             self.assertEqual(len(contacts), 1)
         finally:
@@ -440,7 +437,7 @@ class BasicSOQLRoTest(TestCase):
             _ = ret  # NOQA
 
             request_count_1 = salesforce.dbapi.driver.request_count
-            self.assertEqual(request_count_1,  request_count_0 + 1)
+            self.assertEqual(request_count_1, request_count_0 + 1)
             self.assertEqual(len(Contact.objects.filter(account=account)), 2)
         finally:
             account.delete()
@@ -458,7 +455,7 @@ class BasicSOQLRoTest(TestCase):
             Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid)).update(Name="test3" + uid)
             request_count_1 = salesforce.dbapi.driver.request_count
             self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)
-            self.assertEqual(request_count_1,  request_count_0 + 4)
+            self.assertEqual(request_count_1, request_count_0 + 4)
         finally:
             account_0.delete()
             account_1.delete()
@@ -520,12 +517,11 @@ class BasicSOQLRoTest(TestCase):
     def test_range_lookup(self):
         """Get the test opportunity record by range condition.
         """
-        test_opportunity = Opportunity(
-                        name="Example Opportunity",
-                        close_date=datetime.date(year=2015, month=7, day=30),
-                        stage="Prospecting",
-                        amount=130000.00
-        )
+        test_opportunity = Opportunity(name="Example Opportunity",
+                                       close_date=datetime.date(year=2015, month=7, day=30),
+                                       stage="Prospecting",
+                                       amount=130000.00
+                                       )
         test_opportunity.save()
         try:
             # Test date objects
@@ -895,6 +891,8 @@ class BasicSOQLRoTest(TestCase):
         from salesforce.testrunner.example.models import Attachment, Test
         if 'django_Test__c' not in sf_tables():
             self.skipTest("Not found custom object 'django_Test__c'")
+        import pdb
+        pdb.set_trace()
         qs = Attachment.objects.filter(parent__name='abc')
         # "SELECT Attachment.Id FROM Attachment WHERE Attachment.Parent.Name = 'abc'"
         list(qs)
@@ -1011,8 +1009,8 @@ class BasicLeadSOQLTest(TestCase):
         """
         self.test_lead.delete()
         # TODO optimize counting because this can load thousands of records
-        count_deleted = Lead.objects.db_manager(sf_alias).query_all(
-                ).filter(IsDeleted=True, LastName="Unittest General").count()
+        count_deleted = (Lead.objects.db_manager(sf_alias).query_all()
+                         .filter(IsDeleted=True, LastName="Unittest General").count())
         if not default_is_sf:
             self.skipTest("Default database should be any Salesforce.")
         self.assertGreaterEqual(count_deleted, 1)

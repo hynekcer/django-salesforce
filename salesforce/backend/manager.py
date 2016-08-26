@@ -28,9 +28,11 @@ class SalesforceManager(manager.Manager):
         if not router.is_sf_database(self.db):
             return super(SalesforceManager, self).get_queryset()
         else:
-            from salesforce.backend import query, compiler
-            q = query.SalesforceQuery(self.model, where=compiler.SalesforceWhereNode)
-            return query.SalesforceQuerySet(self.model, query=q, using=self.db)
+            from salesforce.backend.sql_query import SalesforceQuery
+            from salesforce.backend.query import SalesforceQuerySet
+            from salesforce.backend.compiler import SalesforceWhereNode
+            q = SalesforceQuery(self.model, where=SalesforceWhereNode)
+            return SalesforceQuerySet(self.model, query=q, using=self.db)
 
     def using(self, alias):
         if alias is None:
@@ -45,8 +47,8 @@ class SalesforceManager(manager.Manager):
 
     def raw(self, raw_query, params=None, *args, **kwargs):
         if router.is_sf_database(self.db):
-            from salesforce.backend import query
-            q = query.SalesforceRawQuery(raw_query, self.db, params)
+            from salesforce.backend import query, sql_query
+            q = sql_query.SalesforceRawQuery(raw_query, self.db, params)
             return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q,
                                                params=params, using=self.db)
         else:
