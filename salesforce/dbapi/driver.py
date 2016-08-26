@@ -8,6 +8,7 @@ Code at lower level than DB API should be also here.
 """
 from collections import namedtuple
 from itertools import islice
+from unittest import SkipTest
 import datetime
 import decimal
 import json
@@ -17,6 +18,7 @@ import socket
 import time
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models.sql import subqueries
 import pytz
 import requests
@@ -315,6 +317,7 @@ class CursorWrapper(object):
         return handle_api_exceptions(url, self.session.get, _cursor=self)
 
     def execute_insert(self, query):
+        self.before_write_intent()
         table = query.model._meta.db_table
         headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)
@@ -347,6 +350,7 @@ class CursorWrapper(object):
 
     # tix dep query...
     def execute_update(self, query):
+        self.before_write_intent()
         table = query.model._meta.db_table
         # this will break in multi-row updates
         assert (len(query.where.children) == 1 and
@@ -402,6 +406,7 @@ class CursorWrapper(object):
         return _ret
 
     def execute_delete(self, query):
+        self.before_write_intent()
         table = query.model._meta.db_table
 
         # the root where node's children may itself have children..
@@ -426,6 +431,21 @@ class CursorWrapper(object):
 
     # The following 3 methods (execute_ping, id_request, versions_request)
     # can be renamed soon or moved.
+
+    def before_write_intent(self):
+        sf_live_test_policy = getattr(settings, 'SF_LIVE_TEST_POLICY', 'deny_if_write')
+        if self.db.is_in_test and not self.db.is_sandbox:
+            if sf_live_test_policy == 'allow':
+                return
+            elif sf_live_test_policy == 'skip_if_write':
+                raise SkipTest("Skipped because the test that tries to write to a "
+                               "production database. see SF_LIVE_TEST_POLICY")
+            elif sf_live_test_policy == 'deny_if_write':
+                raise ImproperlyConfigured("SF_LIVE_TEST_POLICY or live_* decorators must be set "
+                                           "if you want to write to a production SF database in test.")
+            else:
+                raise ImproperlyConfigured("%s is not a valid value for SF_LIVE_TEST_POLICY" %
+                                           sf_live_test_policy)
 
     def urls_request(self):
         """Empty REST API request is useful after long inactivity before POST.
