@@ -851,7 +851,7 @@ class FieldMap(object):
         <class 'salesforce.fields.CharField'>
     """
     django2py_map = {  # Django type name to Python type
-        'IntegerField': int,
+        'IntegerField': int, 
         'BigIntegerField': int,
         'SmallIntegerField': int,
         'DecimalField': decimal.Decimal,

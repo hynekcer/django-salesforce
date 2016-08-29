@@ -273,3 +273,13 @@ class DynamicAuth(SalesforceAuth):
 
     def authenticate(self):
         return {'instance_url': self.settings_dict.get('HOST', 'https://')}
+
+
+class MockAuth(SalesforceAuth):
+    """Dummy authentication for offline Mock tests"""
+    def authenticate(self):
+        return {'instance_url': 'mock://'}
+
+    def get_auth(self):
+        # never cache
+        return self.authenticate()
