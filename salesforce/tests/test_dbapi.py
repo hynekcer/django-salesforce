@@ -1,6 +1,18 @@
+import json
 from django.test.testcases import TestCase
 from django.utils.six import text_type
 from salesforce.dbapi import driver
+
+
+class MockJsonResponse(object):
+    """Mock response for some unit tests offline"""
+    def __init__(self, text, status_code=200, resp_content_type='application/json'):
+        self.text = text
+        self.status_code = status_code
+        self.content_type = resp_content_type
+
+    def json(self, parse_float=None):
+        return json.loads(self.text, parse_float=parse_float)
 
 
 class FieldMapTest(TestCase):

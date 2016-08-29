@@ -1,8 +1,10 @@
 from unittest import TestCase
+import json
 from salesforce.backend.subselect import (
         find_closing_parenthesis, split_subquery, transform_except_subquery,
         mark_quoted_strings, subst_quoted_strings, simplify_expression,
-        )
+        QQuery)
+from salesforce.tests.test_dbapi import MockJsonResponse
 
 
 class TestSubSelectSearch(TestCase):
@@ -44,6 +46,42 @@ class TestSubSelectSearch(TestCase):
                       )]
                     )
         self.assertEqual(split_subquery(sql), expected)
+
+
+class QQueryTest(TestCase):
+    def test_parsed_aliases(self):
+        """Verify that rroot_table is correctly removed from aliases"""
+        sql = "SELECT LastName, Contact.FirstName, Contact.Account.Name, Account.Company FROM Contact"
+        self.assertEqual(QQuery(sql).aliases, ['LastName', 'FirstName', 'Account.Name', 'Account.Company'])
+
+    def test_aggregation(self):
+        sql = "SELECT FirstName, COUNT(Id) xcount, COUNT(Phone) FROM Contact GROUP BY FirstName"
+        self.assertEqual(QQuery(sql).aliases, ['FirstName', 'xcount', 'expr0'])
+
+    def test_child_relationship(self):
+        sql = "SELECT Company, (SELECT LastName FROM Contacts) FROM Account"
+        self.assertEqual(QQuery(sql).aliases, ['Company', 'Contacts'])
+
+    def test_parse_rest_response(self):
+        sql = "SELECT Id, Account.Name FROM Contact LIMIT 1"
+        response_dict = {
+            "totalSize": 1,
+            "done": True,
+            "records": [{"attributes": {"type": "Contact",
+                                        "url": "/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"
+                                        },
+                         "Id":  "003A000000wJICkIAO",
+                         "Account": {"attributes": {"type": "Account",
+                                                    "url": "/services/data/v37.0/sobjects/Account/001A000000w1KuKIAU"
+                                                    },
+                                     "Name": "django-salesforce test"
+                                     }
+                         }]
+        }
+        mock_response = MockJsonResponse(json.dumps(response_dict))
+        mock_cursor = 'fake_non_empty_object'
+        expected = [['003A000000wJICkIAO', 'django-salesforce test']]
+        self.assertEqual(list(QQuery(sql).parse_rest_response(mock_response, mock_cursor)), expected)
 
 
 class ReplaceQuotedStringsTest(TestCase):
