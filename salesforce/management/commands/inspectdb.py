@@ -3,21 +3,21 @@ import re
 
 from django.core.management.commands.inspectdb import Command as InspectDBCommand
 from django.db import connections
-from django.utils import six
+from django.utils.six import PY3, text_type
 from salesforce.backend import introspection as sf_introspection
 from salesforce import DJANGO_19_PLUS
 
 
 def fix_field_params_repr(params):
     """
-    Fixes repr() of "field_params" for Python 2 with future unicode_literals.
+    Fixes repr() of "field_params" for Python 2 with future text_type_literals.
     """
-    class ReprUnicode(six.text_type):
+    class ReprUnicode(text_type):
         def __new__(cls, text):
-            return unicode.__new__(cls, text)
+            return text_type.__new__(cls, text)
 
         def __repr__(self):
-            out = repr(unicode(self))
+            out = repr(text_type(self))
             return out[1:] if out.startswith("u'") or out.startswith('u"') else out
 
     class ReprChoices(list):
@@ -28,17 +28,17 @@ def fix_field_params_repr(params):
             out = []
             for x0, x1 in self:
                 out.append('(%s, %s)' % (
-                           repr(ReprUnicode(x0) if isinstance(x0, unicode) else x0),
-                           repr(ReprUnicode(x1) if isinstance(x1, unicode) else x1)
+                           repr(ReprUnicode(x0) if isinstance(x0, text_type) else x0),
+                           repr(ReprUnicode(x1) if isinstance(x1, text_type) else x1)
                            ))
             return '[%s]' % (', '.join(out))
-    if six.PY3:
+    if PY3:
         return params
     out = OrderedDict()
     for k, v in params.items():
         if k == 'choices' and v:
             v = ReprChoices(v)
-        elif isinstance(v, unicode):
+        elif isinstance(v, text_type):
             v = ReprUnicode(v)
         out[k] = v
     return out
@@ -52,14 +52,14 @@ def fix_international(text):
 
         def endswith(self, string):
             return super(SmartInternational, self).endswith(str(string))
-    if six.PY3:
+    if PY3:
         return text
     out = []
     last = 0
     for match in re.finditer(r'(?<=[^\\])(?:\\x[0-9a-f]{2}|\\u[0-9a-f]{4})', text):
         start, end, group = match.start(), match.end(), match.group()
         out.append(text[last:start])
-        c = group.decode('unicode_escape')
+        c = group.decode('text_type_escape')
         out.append(c if ord(c) > 160 and ord(c) != 173 else group)
         last = end
     out.append(text[last:])
@@ -79,7 +79,7 @@ class Command(InspectDBCommand):
         self.verbosity = int(options['verbosity'])
         self.connection = connections[options['database']]
         if self.connection.vendor == 'salesforce':
-            if not six.PY3:
+            if not PY3:
                 self.stdout.write("# coding: utf-8\n")
             self.db_module = 'salesforce'
             for line in self.handle_inspection(options):

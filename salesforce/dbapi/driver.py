@@ -823,6 +823,8 @@ json_conversions = {
     models.SalesforceModel: sobj_id,
 }
 if not PY3:
+    if False:
+        long, unicode = long, unicode  # NOQA
     json_conversions[long] = str
 
 sql_conversions = json_conversions.copy()
@@ -851,7 +853,7 @@ class FieldMap(object):
         <class 'salesforce.fields.CharField'>
     """
     django2py_map = {  # Django type name to Python type
-        'IntegerField': int, 
+        'IntegerField': int,
         'BigIntegerField': int,
         'SmallIntegerField': int,
         'DecimalField': decimal.Decimal,

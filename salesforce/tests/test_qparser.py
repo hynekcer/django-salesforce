@@ -1,5 +1,4 @@
 from unittest import TestCase
-import json
 from salesforce.backend.subselect import (
         find_closing_parenthesis, split_subquery, transform_except_subquery,
         mark_quoted_strings, subst_quoted_strings, simplify_expression,
@@ -64,22 +63,14 @@ class QQueryTest(TestCase):
 
     def test_parse_rest_response(self):
         sql = "SELECT Id, Account.Name FROM Contact LIMIT 1"
-        response_dict = {
-            "totalSize": 1,
-            "done": True,
-            "records": [{"attributes": {"type": "Contact",
-                                        "url": "/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"
-                                        },
-                         "Id":  "003A000000wJICkIAO",
-                         "Account": {"attributes": {"type": "Account",
-                                                    "url": "/services/data/v37.0/sobjects/Account/001A000000w1KuKIAU"
-                                                    },
-                                     "Name": "django-salesforce test"
-                                     }
-                         }]
-        }
-        mock_response = MockJsonResponse(json.dumps(response_dict))
-        mock_cursor = 'fake_non_empty_object'
+        mock_response = MockJsonResponse(  # inserted formating whitespace
+            '{"totalSize":1, "done":true, "records":[{'
+            '   "attributes":{"type":"Contact", "url":"/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"},'
+            '   "Id":  "003A000000wJICkIAO",'
+            '   "Account":{'
+            '     "attributes":{"type": "Account", "url": "/services/data/v37.0/sobjects/Account/001A000000w1KuKIAU"},'
+            '     "Name": "django-salesforce test"}}]}')
+        mock_cursor = 'fake_any_non_empty_object'
         expected = [['003A000000wJICkIAO', 'django-salesforce test']]
         self.assertEqual(list(QQuery(sql).parse_rest_response(mock_response, mock_cursor)), expected)
 
