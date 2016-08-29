@@ -12,7 +12,7 @@ conversion).
 """
 
 from django.db import connections
-from salesforce.dbapi.driver import DatabaseError, InterfaceError
+from salesforce.dbapi.exceptions import DatabaseError, InterfaceError
 from salesforce.dbapi import beatbox
 import salesforce
 

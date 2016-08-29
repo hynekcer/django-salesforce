@@ -23,7 +23,7 @@ from salesforce.backend.creation import DatabaseCreation
 from salesforce.backend.validation import DatabaseValidation
 from salesforce.backend.operations import DatabaseOperations
 from salesforce.backend import introspection
-from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
+from salesforce.dbapi.exceptions import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
 from salesforce.dbapi import driver as Database, get_max_retries
 # from django.db.backends.signals import connection_created
 
