@@ -15,11 +15,14 @@ import json
 import logging
 import re
 import socket
+import threading
 import time
 
+from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models.sql import subqueries
+from django.utils.six import text_type
 import pytz
 import requests
 
@@ -66,8 +69,8 @@ def standard_errorhandler(connection, cursor, errorclass, errorvalue):
 # ---
 
 
-CursorDescription = namedtuple(
-    'CursorDescription',
+CursorDescriptionItem = namedtuple(
+    'CursorDescriptionItem',
     'name, type_code, display_size, internal_size, precision, scale, null_ok'
 )
 
@@ -831,3 +834,68 @@ sql_conversions.update({
 if not PY3:
     sql_conversions[unicode] = lambda s: quoted_string_literal(s.encode('utf8'))
     json_conversions[unicode] = lambda s: s.encode('utf8')
+
+
+class FieldMap(object):
+    """
+    Mapping from tuple (db_table, db_column) to field description
+
+    The tuple (db_table, db_column) are the the API names sObject and
+    field defined in Salesforce.
+    The curent interface is private (not stable), the implementation is
+    only by Django field.
+    Example:
+        >>> salesforce.dbapi.driver.field_map['Account', 'Name']
+        <salesforce.fields.CharField: Name>
+        >>> type(salesforce.dbapi.driver.field_map['Account', 'Name'])
+        <class 'salesforce.fields.CharField'>
+    """
+    django2py_map = {  # Django type name to Python type
+        'IntegerField': int,
+        'BigIntegerField': int,
+        'SmallIntegerField': int,
+        'DecimalField': decimal.Decimal,
+        'FloatField': float,
+        'BooleanField': bool,
+        'DateTimeField': datetime.datetime,
+        'TimeField': datetime.time,
+        'DateField': datetime.date,
+    }
+
+    def __init__(self):
+        self.map = None
+        self.lock = threading.Lock()
+
+    def __getitem__(self, table_field):
+        if not self.map:
+            self.set_map()
+        table, field = table_field
+        return self.map.get(table.lower(), {}).get(field.lower())
+
+    def description(self, table_field):
+        field = self[table_field]
+        description_item = CursorDescriptionItem(
+            name=field.column,
+            type_code=self.django2py_map.get(type(field).__name__, text_type),
+            display_size=None,
+            internal_size=getattr(field, 'max_length', None),
+            precision=getattr(field, 'max_digits', None),
+            scale=getattr(field, 'decimal_places', None),
+            null_ok=field.null,
+        )
+        return description_item
+
+    def set_map(self):
+        """Initialize the map to fields (case insensitive)"""
+        with self.lock:
+            if not self.map:
+                field_map = {}
+                for model in apps.get_models():
+                    if isinstance(model, salesforce.models.SalesforceModelBase):
+                        for x in model._meta.get_fields():
+                            if hasattr(x, 'column'):
+                                field_map.setdefault(model._meta.db_table.lower(), {}).setdefault(x.column.lower(), x)
+                self.map = field_map
+
+
+field_map = FieldMap()

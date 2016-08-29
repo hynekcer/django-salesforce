@@ -116,7 +116,8 @@ class QQuery(object):
 
     def _make_flat(self, row_dict, path, subroots, cursor=None):
         """Replace the nested dict objects by a flat dict with keys "object.object.name"."""
-        # cursor parameter is currently unused
+        # The cursor parameter is currently unused (no introspection
+        # yet, only field_map by models)
         out = {}
         for k, v in row_dict.items():
             klc = k.lower()  # "k lower case"
