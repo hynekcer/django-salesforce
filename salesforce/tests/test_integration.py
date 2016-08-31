@@ -408,13 +408,18 @@ class BasicSOQLRoTest(TestCase):
         """
         if settings.PERSON_ACCOUNT_ACTIVATED:
             test_account = Account(FirstName='IntegrationTest',
-                                   LastName='Account')
+                                   LastName='Account',
+                                   )
         else:
             test_account = Account(Name='IntegrationTest Account')
+        # component of a compount field
+        test_account.ShippingStreet = 'abcd'
         test_account.save()
         try:
             accounts = Account.objects.filter(Name='IntegrationTest Account')
             self.assertEqual(len(accounts), 1)
+            self.assertEqual(accounts[0].ShippingStreet, 'abcd')
+            self.assertEqual(accounts[0].ShippingAddress['street'], 'abcd')
         finally:
             test_account.delete()
 

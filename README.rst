@@ -301,6 +301,12 @@ Advanced usage
    safe as it is related only to the alternate non SFDC database configured
    by ``SF_ALIAS``.)
 
+-  **Compound Fields** The compound types Address and Geolocation are supported,
+   but they contain only a duplicit read-only information that is accessible
+   also by individual components, e.g ShippingAddress dictionary vs.
+   ShippingStreet and ShippingCity etc. It is better to use only individual or
+   compound value, not both.
+
 Foreign Key Support
 -------------------
 Foreign key relationships should work as expected, but mapping
@@ -336,7 +342,6 @@ here are the potential pitfalls and unimplemented operations:
 -  **Database Migrations** — ``migrate`` will only create new tables; in non-SF
    databases (useful for unit tests); SFDC classes are assumed to already
    exist with the appropriate permissions.
-
 
 Backwards-incompatible changes
 ------------------------------

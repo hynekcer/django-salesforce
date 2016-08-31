@@ -12,7 +12,7 @@ Allows access to all Salesforce objects accessible via the SOQL API.
 """
 import logging
 
-__version__ = "0.6.9"  # development shortly before 0.7
+__version__ = "0.6.99"  # development shortly before 0.7
 
 try:
     import django

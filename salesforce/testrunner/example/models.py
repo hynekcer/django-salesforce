@@ -63,6 +63,8 @@ class AbstractAccount(SalesforceModel):
     BillingState = models.CharField(max_length=20)
     BillingPostalCode = models.CharField(max_length=20)
     BillingCountry = models.CharField(max_length=40)
+    # Compound field - the result is a dictionary, even that the field is CharField 
+    ShippingAddress = models.CharField(max_length=255, sf_read_only=models.READ_ONLY)
     ShippingStreet = models.CharField(max_length=255)
     ShippingCity = models.CharField(max_length=40)
     ShippingState = models.CharField(max_length=20)

@@ -121,7 +121,7 @@ class QQuery(object):
         out = {}
         for k, v in row_dict.items():
             klc = k.lower()  # "k lower case"
-            if (not isinstance(v, dict) or (
+            if (not isinstance(v, dict) or not 'attributes' in v or (
                 'done' in v and 'records' in v and 'totalSize' in v
             )):
                 if klc not in subroots:
