@@ -285,6 +285,9 @@ class CursorWrapper(object):
                 # bulk operation SOAP
                 if all(x['success'] for x in response):
                     self.lastrowid = [item['id'] for item in response]
+                    self.rowcount = len(response)
+                else:
+                    raise SalesforceError([x for x in response if not x['success']][0]) 
             # the encoding is detected automatically, e.g. from headers
             elif(response and response.text):
                 # parse_float set to decimal.Decimal to avoid precision errors when
@@ -349,10 +352,12 @@ class CursorWrapper(object):
             return ret
 
         log.debug('INSERT %s%s' % (table, post_data))
-        return handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data), _cursor=self)
+        return handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
+                                     _cursor=self)
 
     # tix dep query...
     def execute_update(self, query):
+        from salesforce.backend.operations import BULK_BATCH_SIZE
         self.before_write_intent()
         table = query.model._meta.db_table
         # this will break in multi-row updates
@@ -367,6 +372,9 @@ class CursorWrapper(object):
         if isinstance(pk, (tuple, list, salesforce.backend.query.SalesforceQuerySet)):
             if not self.use_soap_for_bulk:
                 # bulk by REST
+                if len(pk) > BULK_BATCH_SIZE:
+                    raise OperationalError("Bulk operations like queryset update with more than "
+                                           "%d items require Beatbox - SOAP API" % BULK_BATCH_SIZE)
                 url = rest_api_url(self.session, 'composite/batch')
                 last_mod = None
                 if pk and hasattr(pk[0], 'pk'):
@@ -388,24 +396,34 @@ class CursorWrapper(object):
                 }
                 headers.update({'If-Unmodified-Since': time.strftime('%a, %d %b %Y %H:%M:%S GMT',
                                (last_mod + datetime.timedelta(seconds=0)).timetuple())})
-                _ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
+                _ret = handle_api_exceptions(url, self.session.post, headers=headers,
+                                             data=json.dumps(post_data),
                                              _cursor=self)
+                if not _ret.json()['hasErrors']:
+                    self.rowcount = len(_ret.json()['results'])
             else:
                 # bulk by SOAP
                 svc = salesforce.utils.get_soap_client('salesforce')
-                out = []
-                for x in pk:
-                    d = post_data.copy()
-                    d.update({'type': table, 'Id': getattr(x, 'pk', x)})
-                    out.append(d)
-                ret = svc.update(out)
-                return ret
+                pk_iter = iter(pk)
+                ret_full = []
+                while True:
+                    chunk = list(islice(pk_iter, BULK_BATCH_SIZE))
+                    if not chunk:
+                        break
+                    out = []
+                    for x in pk:
+                        d = post_data.copy()
+                        d.update({'type': table, 'Id': getattr(x, 'pk', x)})
+                        out.append(d)
+                    ret = svc.update(out)
+                    ret_full.extend(ret)
+                    return ret_full
         else:
             # single request
             url = rest_api_url(self.session, 'sobjects', table, pk)
             _ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data),
                                          _cursor=self)
-        self.rowcount = 1
+            self.rowcount = 1
         return _ret
 
     def execute_delete(self, query):

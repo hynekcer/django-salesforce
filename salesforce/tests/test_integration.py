@@ -466,10 +466,14 @@ class BasicSOQLRoTest(TestCase):
             request_count_0 = salesforce.dbapi.driver.request_count
             Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)
             Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)
-            Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid)).update(Name="test3" + uid)
+            qs = Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid))
+            num_updated = qs.update(Name="test3" + uid)
+            self.assertEqual(num_updated, 2)
             request_count_1 = salesforce.dbapi.driver.request_count
             self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)
             self.assertEqual(request_count_1, request_count_0 + 4)
+            #
+            self.assertRaises(salesforce.dbapi.exceptions.DatabaseError, qs.update, OwnerId="x")
         finally:
             account_0.delete()
             account_1.delete()
