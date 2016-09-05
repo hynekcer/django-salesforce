@@ -287,7 +287,7 @@ class CursorWrapper(object):
                     self.lastrowid = [item['id'] for item in response]
                     self.rowcount = len(response)
                 else:
-                    raise SalesforceError([x for x in response if not x['success']][0]) 
+                    raise SalesforceError(data=[x['errors'][0] for x in response if not x['success']][0])
             # the encoding is detected automatically, e.g. from headers
             elif(response and response.text):
                 # parse_float set to decimal.Decimal to avoid precision errors when
@@ -686,10 +686,11 @@ def handle_api_exceptions(url, f, *args, **kwargs):
     if response.status_code in (200, 201, 204):
         return response
 
-    # TODO Remove this verbose setting after tuning of specific messages.
+    # TODO Remove this more verbose setting after tuning of specific messages.
     #      Currently it is better more or less.
     # http://www.salesforce.com/us/developer/docs/api_rest/Content/errorcodes.htm
-    verbose = not getattr(getattr(_cursor, 'db', None), 'debug_silent', False)
+    debug_silent = getattr(getattr(_cursor, 'db', None), 'debug_silent', False)
+    verbose = 1 if not debug_silent else 0
     if 'json' not in response.headers.get('Content-Type', ''):
         raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
     else:
@@ -705,20 +706,15 @@ def handle_api_exceptions(url, f, *args, **kwargs):
             return None
         else:
             # if this Id can not be ever valid.
-            raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-                                  % (response.text, url), data, response, verbose
-                                  )
-    if(data['errorCode'] == 'INVALID_FIELD'):
-        raise SalesforceError(data['message'], data, response, verbose)
-    elif(data['errorCode'] == 'MALFORMED_QUERY'):
-        raise SalesforceError(data['message'], data, response, verbose)
-    elif(data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE'):
-        raise SalesforceError(data['message'], data, response, verbose)
-    elif(data['errorCode'] == 'METHOD_NOT_ALLOWED'):
-        raise SalesforceError('%s: %s' % (url, data['message']), data, response, verbose)
+            raise SalesforceError('', data, data, response, verbose, url=url)
+    if data['errorCode'] in ('INVALID_FIELD', 'MALFORMED_QUERY', 'INVALID_FIELD_FOR_INSERT_UPDATE'):
+        raise SalesforceError('', data, response, verbose)
+    elif data['errorCode'] == 'METHOD_NOT_ALLOWED':
+        raise SalesforceError('', data, response, verbose, url=url)
     # some kind of failed query
     else:
-        raise SalesforceError('%s' % data, data, response, verbose)
+        import pdb; pdb.set_trace()
+        raise SalesforceError('', data, response, verbose, url=url)
 
 
 def extract_values(query):
