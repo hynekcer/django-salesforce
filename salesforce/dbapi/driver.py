@@ -333,6 +333,7 @@ class CursorWrapper(object):
             post_data = post_data[0]
         elif not self.use_soap_for_bulk:
             # bulk by REST
+            # TODO Try to implement it by composite/tree for better efficiency (or remove)
             url = rest_api_url(self.session, 'composite/batch')
             post_data = {
                 'batchRequests': [{'method': 'POST',

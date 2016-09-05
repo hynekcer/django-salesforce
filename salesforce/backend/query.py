@@ -13,7 +13,6 @@ Salesforce object query and queryset customizations.
 #      (Evenso some low level internals of salesforce.auth should be moved to
 #      salesforce.dbapi.driver.Connection)
 
-from __future__ import print_function
 import datetime
 import pytz
 

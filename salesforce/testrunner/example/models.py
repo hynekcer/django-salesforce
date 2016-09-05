@@ -253,8 +253,9 @@ class ChargentOrder(SalesforceModel):
 
 
 class CronTrigger(SalesforceModel):
-    # A special DateTime field with milisecond resolution (read only)
-    PreviousFireTime = models.DateTimeField(verbose_name='Previous Run Time', blank=True, null=True)
+    # A special DateTime field with milisecond resolution
+    PreviousFireTime = models.DateTimeField(verbose_name='Previous Run Time', blank=True, null=True,
+                                            sf_read_only=models.READ_ONLY)
     # ...
 
 

@@ -24,6 +24,7 @@ from salesforce.testrunner.example.models import (
     Product, Pricebook, PricebookEntry, Note, Task,
     Organization, models_template,
 )
+from salesforce.dbapi.exceptions import DatabaseError, SalesforceError
 from salesforce import router
 import salesforce
 from ..backend.test_helpers import skip, skipUnless, expectedFailure, expectedFailureIf  # NOQA test decorators
@@ -161,10 +162,10 @@ class BasicSOQLRoTest(TestCase):
             try:
                 with QuietSalesforceErrors(sf_alias):
                     duplicate.save()
-            except salesforce.backend.base.SalesforceError as exc:
+            except SalesforceError as exc:
                 self.assertEqual(exc.data['errorCode'], 'DUPLICATE_VALUE')
             else:
-                self.assertRaises(salesforce.backend.base.SalesforceError, duplicate.save)
+                self.assertRaises(SalesforceError, duplicate.save)
 
             # test 2: the reverse relation is a value, not a set
             result = User.objects.exclude(apex_email_notification__user=None)
@@ -438,7 +439,7 @@ class BasicSOQLRoTest(TestCase):
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_bulk_create(self):
-        """Create two Contacts by one request in one command and find them.
+        """Create two Contacts by one request and find them.
         """
         account = Account(Name='test bulk')
         account.save()
@@ -457,23 +458,32 @@ class BasicSOQLRoTest(TestCase):
             account.delete()
 
     def test_bulk_update(self):
-        """Create two Contacts by one request in one command, find them.
+        """Update two Contacts by one request.
         """
         account_0, account_1 = [Account(Name='test' + uid), Account(Name='test' + uid)]
         account_0.save()
         account_1.save()
         try:
+            # check with 3 types of where conditions that the minimal necessary number of request 
             request_count_0 = salesforce.dbapi.driver.request_count
             Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)
             Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)
             qs = Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid))
             num_updated = qs.update(Name="test3" + uid)
+            # check the return value equals num updated
             self.assertEqual(num_updated, 2)
             request_count_1 = salesforce.dbapi.driver.request_count
+            # check that they are really updated
             self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)
+            # check the total number or requests for these 3 types
+            # of where condition: 1 + 1 + 2
             self.assertEqual(request_count_1, request_count_0 + 4)
-            #
-            self.assertRaises(salesforce.dbapi.exceptions.DatabaseError, qs.update, OwnerId="x")
+            # check that errors are reported
+            self.assertRaises(DatabaseError, qs.update, OwnerId="x")
+            # update to null
+            Account.objects.filter(pk__in=[account_0.pk, account_1.pk]).update(Phone="987654321012")
+            Account.objects.filter(pk__in=[account_0.pk, account_1.pk]).update(Phone=None)
+            self.assertEqual(Account.objects.get(pk=account_0.pk).Phone, None)
         finally:
             account_0.delete()
             account_1.delete()
@@ -678,7 +688,7 @@ class BasicSOQLRoTest(TestCase):
         bad_queryset = Lead.objects.raw("select XYZ from Lead")
         bad_queryset.query.debug_silent = True
         with QuietSalesforceErrors(sf_alias):
-            self.assertRaises(salesforce.backend.base.SalesforceError, list, bad_queryset)
+            self.assertRaises(SalesforceError, list, bad_queryset)
 
     def test_queryset_values(self):
         """Test list of dict qs.values() and list of tuples qs.values_list()
@@ -727,7 +737,7 @@ class BasicSOQLRoTest(TestCase):
         # Id of completely deleted item or fake but valid item.
         Contact(pk='003000000000000AAA').delete()
         # bad_id = '003000000000000AAB' # Id with an incorrect uppercase mask
-        # self.assertRaises(salesforce.backend.base.SalesforceError, Contact(pk=bad_id).delete)
+        # self.assertRaises(SalesforceError, Contact(pk=bad_id).delete)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     @skipUnless(len(sf_databases) > 1, "Only one SF database found.")

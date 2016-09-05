@@ -83,6 +83,9 @@ class SalesforceAuth(AuthBase):
             connections['salesforce'].sf_session.auth.dynamic_start(access_token)
 
     http://docs.python-requests.org/en/latest/user/advanced/#custom-authentication
+
+    "Best Practices For Handling Failed Logins" (Salesforce)
+    http://help.salesforce.com/HTViewSolution?id=000212767&language=en_US
     """
     can_reauthenticate = False
     required_fields = ()
