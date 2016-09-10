@@ -6,16 +6,12 @@ from django.test import TestCase
 from salesforce.testrunner.example.models import Account, Lead
 from salesforce.utils import convert_lead
 from ..backend.test_helpers import skipUnless
-
-try:
-    import beatbox
-except ImportError:
-    beatbox = None
+from salesforce.dbapi.soap import soap_enabled
 
 
 class UtilitiesTest(TestCase):
 
-    @skipUnless(beatbox, "Beatbox needs to be installed in order to run this test.")
+    @skipUnless(soap_enabled, "Beatbox needs to be installed in order to run this test.")
     def test_lead_conversion(self):
         """
         Create a Lead object within Salesforce and try to

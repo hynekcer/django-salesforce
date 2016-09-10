@@ -11,10 +11,11 @@ import django.db.backends.utils
 from django.utils.deconstruct import deconstructible
 from django.db.backends.base.operations import BaseDatabaseOperations
 
-from salesforce import dbapi, DJANGO_19_PLUS
+from salesforce import DJANGO_19_PLUS
+from salesforce.dbapi.soap import soap_enabled
 
 
-BULK_BATCH_SIZE = 200 if dbapi.beatbox else 25
+BULK_BATCH_SIZE = 200 if soap_enabled else 25
 
 """
 Default database operations, with unquoted names.

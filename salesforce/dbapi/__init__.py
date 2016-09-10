@@ -11,11 +11,6 @@ tested for every Django version, but can depend on some SFDC version.
 
 import logging
 
-try:
-    import beatbox
-except ImportError:
-    beatbox = None
-
 log = logging.getLogger(__name__)
 
 # The maximal number of retries for timeouts in requests to Force.com API.

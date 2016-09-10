@@ -27,6 +27,7 @@ import pytz
 import requests
 
 from salesforce import models
+from salesforce.dbapi.soap import soap_enabled, get_soap_client
 from salesforce.dbapi.exceptions import (
     Error, DatabaseError, DataError, IntegrityError,
     InterfaceError, InternalError, NotSupportedError,
@@ -218,7 +219,6 @@ class CursorWrapper(object):
         Parameters:
             db: the connection from connections[alias]
         """
-        import salesforce.utils
         self.db = db
         self.query = query
         self.session = db.sf_session
@@ -227,7 +227,7 @@ class CursorWrapper(object):
         self.rowcount = None
         self.first_row = None
         self.row_type = list
-        if salesforce.dbapi.beatbox is None:
+        if not soap_enabled:
             self.use_soap_for_bulk = False
 
     def __enter__(self):
@@ -346,7 +346,7 @@ class CursorWrapper(object):
             }
         else:
             # bulk by SOAP
-            svc = salesforce.utils.get_soap_client('salesforce')
+            svc = get_soap_client('salesforce')
             for x in post_data:
                 x.update({'type': table})
             ret = svc.create(post_data)
@@ -404,7 +404,7 @@ class CursorWrapper(object):
                     self.rowcount = len(_ret.json()['results'])
             else:
                 # bulk by SOAP
-                svc = salesforce.utils.get_soap_client('salesforce')
+                svc = get_soap_client('salesforce')
                 pk_iter = iter(pk)
                 ret_full = []
                 while True:
