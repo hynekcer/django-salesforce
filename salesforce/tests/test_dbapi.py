@@ -63,7 +63,7 @@ class MockRequestsSession(object):
                 print("=== MOCK RECORD {testcase}\nMockJsonRequest(\n    {params})\n===".format(
                       testcase=self.testcase,
                       params=',\n    '.join(output)
-                ))
+                      ))
             return response
         else:
             raise NotImplementedError("Not implemented SF_MOCK_MODE=%s" % mode)
@@ -75,7 +75,7 @@ class MockRequestsSession(object):
         return self.request('POST', url, data=data, json=json, **kwargs)
 
     def patch(self, url, data=None, **kwargs):
-        return self.request('PATCH', url,  data=data, **kwargs)
+        return self.request('PATCH', url, data=data, **kwargs)
 
     def delete(self, url, **kwargs):
         return self.request('DELETE', url, **kwargs)
@@ -99,11 +99,11 @@ class MockRequest(object):
         testcase.assertEqual(method.upper(), self.method.upper())
         testcase.assertEqual(url, self.url)
         if 'json' in (self.request_type or ''):
-            testcase.assertJSONEqual(data,  self.request_text)
+            testcase.assertJSONEqual(data, self.request_text)
         if 'xml' in (self.request_type or ''):
-            testcase.assertXMLEqual(data,  self.request_text)
+            testcase.assertXMLEqual(data, self.request_text)
         else:
-            testcase.assertEqual(data,  self.request_text)
+            testcase.assertEqual(data, self.request_text)
         kwargs.pop('timeout')
         assert kwargs.pop('verify') is True
         if kwargs:

@@ -714,7 +714,6 @@ def handle_api_exceptions(url, f, *args, **kwargs):
         raise SalesforceError('', data, response, verbose, url=url)
     # some kind of failed query
     else:
-        import pdb; pdb.set_trace()
         raise SalesforceError('', data, response, verbose, url=url)
 
 

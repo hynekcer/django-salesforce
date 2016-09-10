@@ -464,7 +464,7 @@ class BasicSOQLRoTest(TestCase):
         account_0.save()
         account_1.save()
         try:
-            # check with 3 types of where conditions that the minimal necessary number of request 
+            # check with 3 types of where conditions that the minimal necessary number of request
             request_count_0 = salesforce.dbapi.driver.request_count
             Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)
             Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)
