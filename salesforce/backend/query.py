@@ -50,7 +50,7 @@ def prep_for_deserialize_inner(model, record, init_list=None):
             else:
                 # Normal fields
                 if x.column not in record:
-                    import pdb; pdb.set_trace()
+                    print("Missing column '%s' in %s" % (x.column, x._meta.db_table))
                 field_val = record[x.column]
                 # db_type = x.db_type(connection=connections[using])
                 if(x.__class__.__name__ == 'DateTimeField' and field_val is not None):
