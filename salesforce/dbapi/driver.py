@@ -661,7 +661,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
     # print("== REQUEST %s | %s | %s | %s" % (url, f, args, kwargs))
     global request_count
     # The 'verify' option is about verifying SSL certificates
-    kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', 3),
+    kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', (4, 15)),
                  'verify': True}
     kwargs_in.update(kwargs)
     _cursor = kwargs_in.pop('_cursor', None)

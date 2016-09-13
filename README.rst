@@ -100,7 +100,7 @@ Quick Start
 6. **(optional)** To override the default timeout of 15 seconds,
    define ``SALESFORCE_QUERY_TIMEOUT`` in your settings file::
 
-    SALESFORCE_QUERY_TIMEOUT = 15  # default
+    SALESFORCE_QUERY_TIMEOUT = (4, 15)  # default (connect timeout, data timeout)
 
 7. **(optional)** If you want to use another name for your Salesforce DB
    connection, define ``SALESFORCE_DB_ALIAS`` in your settings file::
