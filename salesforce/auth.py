@@ -16,11 +16,13 @@ Accepted parameters are both str or unicode in Python 2.
 """
 
 import base64
+import datetime
 import hashlib
 import hmac
 import json
 import logging
 import os
+import pytz
 import threading
 
 import requests
@@ -189,6 +191,17 @@ class SalesforceAuth(AuthBase):
             except Exception as e:
                 raise ImproperlyConfigured("'HOST' key in '%s' database settings should be a valid URL: %s" %
                                            (self.db_alias, e))
+
+    def auth_issued_at(self):
+        """Decode token 'issued_at'"""
+        auth_data = self.get_auth()
+        if 'issued_at' in auth_data:
+            auth_epoch_ms = int(auth_data['issued_at'])
+            auth_timestamp = datetime.datetime.fromtimestamp(auth_epoch_ms / 1000.,
+                                                             tz=pytz.utc)
+            return auth_timestamp
+        else:
+            return None
 
     @staticmethod
     def create_subclass_instance(db_alias, settings_dict, _session=None):

@@ -451,6 +451,7 @@ class BasicSOQLRoTest(TestCase):
             ret = Contact.objects.bulk_create(objects)
             _ = ret  # NOQA
 
+            # TODO this didn't count SOAP, only cursor.urls_request()
             request_count_1 = salesforce.dbapi.driver.request_count
             self.assertEqual(request_count_1, request_count_0 + 1)
             self.assertEqual(len(Contact.objects.filter(account=account)), 2)
@@ -466,17 +467,18 @@ class BasicSOQLRoTest(TestCase):
         try:
             # check with 3 types of where conditions that the minimal necessary number of request
             request_count_0 = salesforce.dbapi.driver.request_count
-            Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)
-            Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)
+            Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)  # REST
+            Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)  # SOAP
             qs = Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid))
             num_updated = qs.update(Name="test3" + uid)
             # check the return value equals num updated
             self.assertEqual(num_updated, 2)
             request_count_1 = salesforce.dbapi.driver.request_count
             # check that they are really updated
-            self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)
+            self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)  # REST + SOAP
             # check the total number or requests for these 3 types
             # of where condition: 1 + 1 + 2
+            # TODO this didn't count SOAP, only cursor.urls_request()
             self.assertEqual(request_count_1, request_count_0 + 4)
             # check that errors are reported
             self.assertRaises(DatabaseError, qs.update, OwnerId="x")

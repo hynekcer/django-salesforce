@@ -17,7 +17,6 @@ def get_soap_client(db_alias, client_class=None):
     The default created client is "beatbox.PythonClient", but an
     alternative client is possible. (i.e. other subtype of beatbox.XMLClient)
     """
-    from salesforce.dbapi.driver import CursorWrapper
     if not beatbox:
         raise InterfaceError("To use SOAP API, you'll need to install the Beatbox package.")
     if client_class is None:
@@ -27,8 +26,7 @@ def get_soap_client(db_alias, client_class=None):
     # authenticate
     connection = connections[db_alias]
     # verify the authenticated connection, because Beatbox can not refresh the token
-    cursor = CursorWrapper(connection)
-    cursor.urls_request()
+    connection.sf_session.require_auth(connection)
     auth_info = connections[db_alias].sf_session.auth
 
     access_token = auth_info.get_auth()['access_token']

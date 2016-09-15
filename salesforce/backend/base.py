@@ -10,7 +10,6 @@ Salesforce database backend for Django.
 """
 
 import logging
-import requests
 import sys
 import threading
 
@@ -23,6 +22,7 @@ from salesforce.backend.creation import DatabaseCreation
 from salesforce.backend.validation import DatabaseValidation
 from salesforce.backend.operations import DatabaseOperations
 from salesforce.backend import introspection
+from salesforce.dbapi.base import SessionEncap
 from salesforce.dbapi.exceptions import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
 from salesforce.dbapi import driver as Database, get_max_retries
 # from django.db.backends.signals import connection_created
@@ -115,7 +115,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """Authenticate and get the name of assigned SFDC data server"""
         with connect_lock:
             if self._sf_session is None:
-                sf_session = requests.Session()
+                sf_session = SessionEncap()
                 sf_session.auth = self._sf_auth
                 sf_instance_url = sf_session.auth.instance_url  # property: usually get by login request
                 sf_requests_adapter = HTTPAdapter(max_retries=get_max_retries())
