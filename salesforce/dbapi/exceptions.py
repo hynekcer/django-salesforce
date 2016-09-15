@@ -46,6 +46,11 @@ class NotSupportedError(DatabaseError):
     pass
 
 
+# not from DB API
+class AuthenticationError(DatabaseError):
+    pass
+
+
 class SalesforceError(DatabaseError):
     """
     DatabaseError reported by Salesforce API (can be searched in their docs)

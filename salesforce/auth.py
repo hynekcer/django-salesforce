@@ -24,6 +24,7 @@ import logging
 import os
 import pytz
 import threading
+import time
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -31,7 +32,7 @@ from requests.auth import AuthBase
 from django.utils.module_loading import import_string
 from django.core.exceptions import ImproperlyConfigured
 from salesforce.dbapi import get_max_retries
-from salesforce.dbapi.exceptions import DatabaseError, IntegrityError
+from salesforce.dbapi.exceptions import DatabaseError, IntegrityError, AuthenticationError
 try:
     from urllib.parse import urlparse
 except ImportError:
@@ -221,6 +222,13 @@ class SalesforcePasswordAuth(SalesforceAuth):
     """
     can_reauthenticate = True
     required_fields = ('ENGINE', 'CONSUMER_KEY', 'CONSUMER_SECRET', 'USER', 'PASSWORD', 'HOST')
+    # wait before the same failed credentials can be re-tried (e.g. to fix inactive user)
+    BLOCKING_TIME = 300
+
+    def __init__(self, *args, **kwargs):
+        super(SalesforcePasswordAuth, self).__init__(*args, **kwargs)
+        self.blocked_hash = None
+        self.blocked_time = None
 
     def authenticate(self):
         """
@@ -231,16 +239,20 @@ class SalesforcePasswordAuth(SalesforceAuth):
 
         log.info("attempting authentication to %s" % settings_dict['HOST'])
         self._session.mount(settings_dict['HOST'], HTTPAdapter(max_retries=get_max_retries()))
-        response = self._session.post(
-            url,
-            data=dict(
-                grant_type='password',
-                client_id=settings_dict['CONSUMER_KEY'],
-                client_secret=settings_dict['CONSUMER_SECRET'],
-                username=settings_dict['USER'],
-                password=settings_dict['PASSWORD'],
-            )
+        data = dict(
+            grant_type='password',
+            client_id=settings_dict['CONSUMER_KEY'],
+            client_secret=settings_dict['CONSUMER_SECRET'],
+            username=settings_dict['USER'],
+            password=settings_dict['PASSWORD'],
         )
+        data_hash = hashlib.sha256(url + str(sorted(data.items())).encode('ascii')).hexdigest()
+        if self.blocked_hash and data_hash == self.blocked_hash and time.time() < self.blocked_time:
+            raise AuthenticationError(
+                "This auth data has not been valid in some previou request. "
+                "Fix it and restart the app or wait %d seconds before retry "
+                "to prevent account locking." % int(self.blocked_time - time.time()))
+        response = self._session.post(url, data=data)
         if response.status_code == 200:
             # prefer str in Python 2 due to other API
             response_data = {str(k): str(v) for k, v in response.json().items()}
@@ -259,7 +271,10 @@ class SalesforcePasswordAuth(SalesforceAuth):
             else:
                 raise IntegrityError('Invalid auth signature received')
         else:
-            raise LookupError("oauth failed: %s: %s" % (settings_dict['USER'], response.text))
+            self.blocked_hash = data_hash
+            self.blocked_time = time.time() + self.BLOCKING_TIME
+            raise AuthenticationError("OAuth failed (http %d): %s: %s" %
+                                      (response.status_code, settings_dict['USER'], response.text))
         return response_data
 
 
@@ -297,5 +312,5 @@ class MockAuth(SalesforceAuth):
         return {'instance_url': 'mock://'}
 
     def get_auth(self):
-        # never cache
+        # this is never cached
         return self.authenticate()
