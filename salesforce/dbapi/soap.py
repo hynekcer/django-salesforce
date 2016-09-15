@@ -26,7 +26,7 @@ def get_soap_client(db_alias, client_class=None):
     # authenticate
     connection = connections[db_alias]
     # verify the authenticated connection, because Beatbox can not refresh the token
-    connection.sf_session.require_auth(connection)
+    connection.sf_session.refresh_auth(connection)
     auth_info = connections[db_alias].sf_session.auth
 
     access_token = auth_info.get_auth()['access_token']

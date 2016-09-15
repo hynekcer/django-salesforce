@@ -1,7 +1,5 @@
 """Base of REST API and SOAP API for Force.com (Salesforce)
 
-not
-  requests.exceptions.ConnectionError
 """
 from collections import namedtuple
 from requests import Session
@@ -9,12 +7,12 @@ from datetime import timedelta
 import datetime
 import pytz
 
-# The worst expected configurable session timeout is 15 minutes.
+# The worst shortest expected configurable session timeout is 15 minutes.
 AUTH_SESSION_TIMEOUT = 900
-# It controls here whether whether the validity of authentication token
-# should be checked before request. It is garantied by SFDC that
+# It controls here whether the validity of authentication token
+# should be checked before request or is guaranted. SFDC declares that
 # the session timer is updated if a new request comes after
-# AUTH_SESSION_TIMEOUT / 2 seconds. Practically it is updated stil if
+# AUTH_SESSION_TIMEOUT / 2 seconds. Practically it is updated sooner, if
 # the new request comes to Salesforce later than 300 seconds after the
 # previous update.
 
@@ -57,8 +55,10 @@ class SessionEncap(Session):
             self.last_timestamps = RequestTimestamps(start=start, end=end, sfdc=sfdc_time)
         return response
 
-    def require_auth(self, connection):
-        """Check authentication if the token can be expired and get a new
+    def refresh_auth(self, connection):
+        """
+        Check authentication whether the token can be expired or try it
+        by a request that eventually can re-authenticate
         Parameter: connection (because we have a re-auth code for
                 a connection not for a session)
         """
@@ -67,17 +67,18 @@ class SessionEncap(Session):
         # It is counted with a safety margin for network delays. The prepared
         # request could be delayed by double value
         # of the preset timeout before it comes to SFDC in the worst case.
-        auth_guaranteed_until = []
-        auth_issued_at = self.auth.auth_issued_at()
-        if auth_issued_at:
-            auth_guaranteed_until.append(auth_issued_at
-                                         + timedelta(seconds=AUTH_SESSION_TIMEOUT))
-        if self.last_timestamps:
-            auth_guaranteed_until.append(self.last_timestamps.start
-                                         + timedelta(seconds=AUTH_SESSION_TIMEOUT / 2))
-        if not auth_guaranteed_until or utcnow_tz() > (max(auth_guaranteed_until)
-                                                       - timedelta(seconds=AUTH_MARGIN_TIME)):
-            connection.cursor().urls_request()
+        if getattr(self.auth, 'can_reauthenticate', False):
+            auth_guaranteed_until = []
+            auth_issued_at = self.auth.auth_issued_at()
+            if auth_issued_at:
+                auth_guaranteed_until.append(auth_issued_at
+                                             + timedelta(seconds=AUTH_SESSION_TIMEOUT))
+            if self.last_timestamps:
+                auth_guaranteed_until.append(self.last_timestamps.start
+                                             + timedelta(seconds=AUTH_SESSION_TIMEOUT / 2))
+            if not auth_guaranteed_until or utcnow_tz() > (max(auth_guaranteed_until)
+                                                           - timedelta(seconds=AUTH_MARGIN_TIME)):
+                connection.cursor().urls_request()
 
 
 # Introspection info
@@ -113,3 +114,4 @@ class SessionEncap(Session):
 #         ConnectionRefusedError  # possible?
 #         ConnectionResetError
 #       TimeoutError
+#       requests.exceptions.ConnectionError   (IOError == OSError)
