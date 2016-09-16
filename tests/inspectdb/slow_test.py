@@ -16,13 +16,13 @@ import os
 import sys
 
 import django
-from salesforce.backend.base import SalesforceError
-
-from tests.inspectdb import models as mdl
 
 sys.path.insert(0, '.')
 os.environ['DJANGO_SETTINGS_MODULE'] = 'tests.inspectdb.settings'
-from django.db import connections  # NOQA
+
+from django.db import connections  # NOQA - must not be imported at the top
+from salesforce.backend.base import SalesforceError  # NOQA
+from tests.inspectdb import models as mdl  # NOQA
 # The same "django.setup()" is used by manage.py subcommands in Django
 django.setup()
 
