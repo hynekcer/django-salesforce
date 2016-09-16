@@ -1,5 +1,5 @@
 """
-Python DB API 2.0 - A layer that is independent on Django.
+Python DB API 2.0 - A layer that should be independent on Django.
 
 Basic SQL and a small part of PEP 0249 will implemented.
 On the contrary, transactions will be never implemented.
@@ -7,6 +7,10 @@ On the contrary, transactions will be never implemented.
 Purpose:
 Many Salesforce APIs and low level features need not be updated and
 tested for every Django version, but can depend on some SFDC version.
+
+Currently: Dependencies of dbapi on Django are tried to be minimalized.
+The biggest are django.conf.settings, django.db.connections, django.test.
+Tests should remain very dependent on Django.
 """
 
 import logging
