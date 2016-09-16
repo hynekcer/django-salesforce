@@ -12,6 +12,9 @@ from salesforce.dbapi import driver
 APPLICATION_JSON = 'application/json;charset=UTF-8'
 
 
+# the first part are not test cases, but helpers for a mocked network: MockTestCase, MockRequest
+
+
 class MockRequestsSession(object):
     """Prepare mock session with expected requests + responses history
 
@@ -82,7 +85,10 @@ class MockRequestsSession(object):
 
 
 class MockRequest(object):
-    """Mock request/response for some unit tests offline"""
+    """Mock request/response for some unit tests offline
+
+    If the parameter 'request_type' is '*' then the request is not tested
+    """
     def __init__(self, method, url,
                  request_text=None, response_text=None,
                  request_type='application/json', response_type=APPLICATION_JSON,
@@ -102,7 +108,7 @@ class MockRequest(object):
             testcase.assertJSONEqual(data, self.request_text)
         if 'xml' in (self.request_type or ''):
             testcase.assertXMLEqual(data, self.request_text)
-        else:
+        elif self.request_type != '*':
             testcase.assertEqual(data, self.request_text)
         kwargs.pop('timeout')
         assert kwargs.pop('verify') is True
@@ -114,36 +120,6 @@ class MockRequest(object):
 class MockJsonRequest(MockRequest):
     """Mock JSON request/response for some unit tests offline"""
     pass  # parent defaults are ok
-
-# class MockXmlRequest - only with different default content types
-
-
-class MockResponse(object):
-    """Mock response for some unit tests offline"""
-    def __init__(self, text, resp_content_type=APPLICATION_JSON, status_code=200):
-        self.text = text
-        self.status_code = status_code
-        self.content_type = resp_content_type
-
-    def json(self, parse_float=None):
-        return json.loads(self.text, parse_float=parse_float)
-
-MockJsonResponse = MockResponse
-
-
-class FieldMapTest(TestCase):
-    def test_field_map(self):
-        self.assertEqual(str(driver.field_map['Account', 'Name']), 'example.Account.Name')
-        self.assertEqual(repr(driver.field_map['Account', 'Name']), '<salesforce.fields.CharField: Name>')
-        self.assertEqual(repr(type(driver.field_map['Account', 'Name'])), "<class 'salesforce.fields.CharField'>")
-
-    def test_field_map_is_case_insensitive(self):
-        self.assertEqual(driver.field_map['aCCOUNT', 'nAME'].column, 'Name')
-
-    def test_field_map_description(self):
-        self.assertEqual(driver.field_map.description(('Contact', 'FirstName')).name, 'FirstName')
-        self.assertEqual(driver.field_map.description(('Contact', 'FirstName')).type_code, text_type)
-        self.assertEqual(driver.field_map.description(('Contact', 'FirstName')).internal_size, 40)
 
 
 class MockTestCase(TestCase):
@@ -171,6 +147,40 @@ class MockTestCase(TestCase):
 
     def mock_add_expected(self, expected_requests):
         self.sf_connection._sf_session.add_expected(expected_requests)
+
+
+# class MockXmlRequest - only with different default content types
+
+
+class MockResponse(object):
+    """Mock response for some unit tests offline"""
+    def __init__(self, text, resp_content_type=APPLICATION_JSON, status_code=200):
+        self.text = text
+        self.status_code = status_code
+        self.content_type = resp_content_type
+
+    def json(self, parse_float=None):
+        return json.loads(self.text, parse_float=parse_float)
+
+MockJsonResponse = MockResponse
+
+
+# test cases
+
+
+class FieldMapTest(TestCase):
+    def test_field_map(self):
+        self.assertEqual(str(driver.field_map['Account', 'Name']), 'example.Account.Name')
+        self.assertEqual(repr(driver.field_map['Account', 'Name']), '<salesforce.fields.CharField: Name>')
+        self.assertEqual(repr(type(driver.field_map['Account', 'Name'])), "<class 'salesforce.fields.CharField'>")
+
+    def test_field_map_is_case_insensitive(self):
+        self.assertEqual(driver.field_map['aCCOUNT', 'nAME'].column, 'Name')
+
+    def test_field_map_description(self):
+        self.assertEqual(driver.field_map.description(('Contact', 'FirstName')).name, 'FirstName')
+        self.assertEqual(driver.field_map.description(('Contact', 'FirstName')).type_code, text_type)
+        self.assertEqual(driver.field_map.description(('Contact', 'FirstName')).internal_size, 40)
 
 
 @override_settings(SF_MOCK_MODE='mixed')
