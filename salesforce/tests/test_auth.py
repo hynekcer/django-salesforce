@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.conf import settings
 
 from salesforce import auth
-from ..backend.test_helpers import default_is_sf, skipUnless, sf_alias
+from salesforce.backend.test_helpers import default_is_sf, skipUnless, sf_alias
 
 import logging
 log = logging.getLogger(__name__)

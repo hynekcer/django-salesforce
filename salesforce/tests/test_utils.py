@@ -2,10 +2,10 @@
 Tests for `salesforce.utils`
 """
 from django.test import TestCase
+from unittest import skipUnless
 
 from salesforce.testrunner.example.models import Account, Lead
 from salesforce.utils import convert_lead
-from ..backend.test_helpers import skipUnless
 from salesforce.dbapi.soap import soap_enabled
 
 

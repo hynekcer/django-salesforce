@@ -27,9 +27,10 @@ from salesforce.testrunner.example.models import (
 from salesforce.dbapi.exceptions import DatabaseError, SalesforceError
 from salesforce import router
 import salesforce
-from ..backend.test_helpers import skip, skipUnless, expectedFailure, expectedFailureIf  # NOQA test decorators
-from ..backend.test_helpers import (get_current_user, default_is_sf, sf_alias, uid_version as uid,
-                                    QuietSalesforceErrors)
+from salesforce.backend.test_helpers import (
+    expectedFailure, expectedFailureIf, skip, skipUnless,  # NOQA test decorators
+    get_current_user, default_is_sf, sf_alias, uid_version as uid,
+    QuietSalesforceErrors)
 
 import logging
 log = logging.getLogger(__name__)
