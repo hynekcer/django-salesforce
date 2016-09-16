@@ -80,7 +80,7 @@ def convert_lead(lead, converted_status=None, **kwargs):
 def set_highest_api_version(db_aliases):
     """Set the highest version of Force.com API supported by all databases in db_aliases
     """
-    from .backend.query import CursorWrapper
+    from salesforce.backend.query import CursorWrapper
     if not isinstance(db_aliases, (list, tuple)):
         db_aliases = [db_aliases]
     max_version = max(CursorWrapper(connections[db_alias]).versions_request()[-1]['version']
