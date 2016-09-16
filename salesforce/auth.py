@@ -246,10 +246,10 @@ class SalesforcePasswordAuth(SalesforceAuth):
             username=settings_dict['USER'],
             password=settings_dict['PASSWORD'],
         )
-        data_hash = hashlib.sha256(url + str(sorted(data.items())).encode('ascii')).hexdigest()
+        data_hash = hashlib.sha256((url + str(sorted(data.items()))).encode('ascii')).hexdigest()
         if self.blocked_hash and data_hash == self.blocked_hash and time.time() < self.blocked_time:
             raise AuthenticationError(
-                "This auth data has not been valid in some previou request. "
+                "The same authentication data have failed in some previous request. "
                 "Fix it and restart the app or wait %d seconds before retry "
                 "to prevent account locking." % int(self.blocked_time - time.time()))
         response = self._session.post(url, data=data)
@@ -273,7 +273,7 @@ class SalesforcePasswordAuth(SalesforceAuth):
         else:
             self.blocked_hash = data_hash
             self.blocked_time = time.time() + self.BLOCKING_TIME
-            raise AuthenticationError("OAuth failed (http %d): %s: %s" %
+            raise AuthenticationError("OAuth failed (http %d): user %s, %s" %
                                       (response.status_code, settings_dict['USER'], response.text))
         return response_data
 

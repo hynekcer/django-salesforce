@@ -63,6 +63,8 @@ class MockRequestsSession(object):
                 response_type = response.headers.get('Content-Type', '')
                 if response_type != APPLICATION_JSON and response.text:
                     output.append("response_type=%r" % response_type)
+                if response.status_code != 200:
+                    output.append("status_code=%d" % response.status_code)
                 print("=== MOCK RECORD {testcase}\nMockJsonRequest(\n    {params})\n===".format(
                       testcase=self.testcase,
                       params=',\n    '.join(output)
@@ -83,6 +85,9 @@ class MockRequestsSession(object):
     def delete(self, url, **kwargs):
         return self.request('DELETE', url, **kwargs)
 
+    def mount(self, prefix, adapter):
+        pass
+
 
 class MockRequest(object):
     """Mock request/response for some unit tests offline
@@ -97,7 +102,7 @@ class MockRequest(object):
         self.url = url
         self.request_text = request_text
         self.response_text = response_text
-        self.request_type = request_type if request_text else None
+        self.request_type = request_type if (request_text or request_type == '*') else None
         self.response_type = response_type if response_text else None
         self.status_code = status_code
 
@@ -106,12 +111,14 @@ class MockRequest(object):
         testcase.assertEqual(url, self.url)
         if 'json' in (self.request_type or ''):
             testcase.assertJSONEqual(data, self.request_text)
-        if 'xml' in (self.request_type or ''):
+        elif 'xml' in (self.request_type or ''):
             testcase.assertXMLEqual(data, self.request_text)
         elif self.request_type != '*':
             testcase.assertEqual(data, self.request_text)
-        kwargs.pop('timeout')
-        assert kwargs.pop('verify') is True
+        kwargs.pop('timeout', None)
+        assert kwargs.pop('verify', True) is True
+        if 'json'in kwargs and kwargs['json'] is None:
+            del kwargs['json']
         if kwargs:
             print("KWARGS = %s" % kwargs)  # TODO
         return MockJsonResponse(self.response_text, status_code=self.status_code, resp_content_type=self.response_type)
