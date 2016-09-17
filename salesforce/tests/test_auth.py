@@ -17,7 +17,7 @@ from django.test.utils import override_settings
 from salesforce import auth
 from salesforce.backend.test_helpers import default_is_sf, skipUnless, sf_alias
 from salesforce.dbapi.exceptions import AuthenticationError
-from salesforce.tests.test_dbapi import MockRequestsSession, MockTestCase, MockRequest
+from salesforce.dbapi.mocksf import MockRequestsSession, MockTestCase, MockRequest
 
 try:
     from unittest import mock
@@ -104,7 +104,7 @@ class InvalidPasswordTest(MockTestCase):
                          'USER': 'me@example.com.sandbox', 'PASSWORD': 'bad password'}
         mock_session.add_expected(3 * [MockRequest(
             'POST', 'mock:///services/oauth2/token',
-            response_text='{"error":"invalid_client_id","error_description":"client identifier invalid"}',
+            response_data='{"error":"invalid_client_id","error_description":"client identifier invalid"}',
             request_type='*', response_type='', status_code=400,)])
         auth_obj = auth.SalesforceAuth.create_subclass_instance(
             sf_alias, settings_dict=settings_dict, _session=mock_session)
