@@ -3,7 +3,7 @@ from salesforce.backend.subselect import (
         find_closing_parenthesis, split_subquery, transform_except_subquery,
         mark_quoted_strings, subst_quoted_strings, simplify_expression,
         QQuery)
-from salesforce.tests.test_dbapi import MockJsonResponse
+from salesforce.dbapi.mocksf import MockJsonResponse
 
 
 class TestSubSelectSearch(TestCase):

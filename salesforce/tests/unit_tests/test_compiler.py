@@ -1,12 +1,15 @@
 """
-Tests that do not need to connect servers
+Tests of query compiler + example Models, but without need to connect to SFDC
+
+(originally salesforce.tests.test_unit)
 """
 
 from django.test import TestCase
 from django.db.models import DO_NOTHING
 from salesforce import fields, models
 from salesforce.testrunner.example.models import (
-        Contact, Opportunity, OpportunityContactRole, ChargentOrder)
+    Contact, Opportunity, OpportunityContactRole, ChargentOrder
+)
 
 # from salesforce.backend.subselect import TestSubSelectSearch
 import salesforce
@@ -92,8 +95,9 @@ class TestQueryCompiler(TestCase):
         This test is very similar to the required example in PR #103.
         """
         qs = OpportunityContactRole.objects.filter(
-                role='abc',
-                opportunity__in=Opportunity.objects.filter(stage='Prospecting'))
+            role='abc',
+            opportunity__in=Opportunity.objects.filter(stage='Prospecting')
+        )
         sql, params = qs.query.get_compiler('salesforce').as_sql()
         self.assertRegexpMatches(sql,
                                  "WHERE Opportunity.StageName =",
@@ -125,7 +129,7 @@ class TestTopologyCompiler(TestCase):
     def test_topology_compiler(self):
         # Contact.objects.all()
         # SELECT Contact.Id FROM Contact
-        self.assertTopo([(None, 'Contact', None, 'Contact')],     {'Contact': 'Contact'})
+        self.assertTopo([(None, 'Contact', None, 'Contact')], {'Contact': 'Contact'})
         # Custom.objects.all()
         # SELECT Custom__c.Id FROM Custom__c
         self.assertTopo([(None, 'Custom__c', None, 'Custom__c')], {'Custom__c': 'Custom__c'})
@@ -151,7 +155,8 @@ class TestTopologyCompiler(TestCase):
     def test_many2many(self):
         # C (Id, AId, BId) - child,  A (Id) - first parent, B (Id) - second parent
         alias_map_items = [
-                (None, 'A', None, 'A'),
-                ('A', 'C', (('Id', 'AId'),), 'C'),
-                ('C', 'B', (('BId', 'Id'),), 'B')]
+            (None, 'A', None, 'A'),
+            ('A', 'C', (('Id', 'AId'),), 'C'),
+            ('C', 'B', (('BId', 'Id'),), 'B')
+        ]
         self.assertTopo(alias_map_items, {'C': 'C', 'A': 'C.A', 'B': 'C.B'})
