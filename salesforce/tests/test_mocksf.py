@@ -14,11 +14,11 @@ class TestMock(MockTestCase):
     def prepare_expected(self):
         self.mock_add_expected(MockJsonRequest(
             'GET', 'mock:///services/data/v37.0/query/?q=SELECT+Name+FROM+Contact+LIMIT+1',
-            response_data=(
-                '{"totalSize": 1, "done": true, "records": [{'
-                '  "attributes": {"type": "Contact",'
-                '                 "url": "/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"},'
-                '  "Name": "django-salesforce test"}]}')))
+            resp=('{"totalSize": 1, "done": true, "records": [{'
+                  '  "attributes": {"type": "Contact",'
+                  '                 "url": "/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"},'
+                  '  "Name": "django-salesforce test"}]}')
+        ))
 
     @override_settings(SF_MOCK_MODE='playback')
     def test_mock_playback(self):

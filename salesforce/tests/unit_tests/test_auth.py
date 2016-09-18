@@ -56,7 +56,7 @@ class InvalidPasswordTest(MockTestCase):
                          'USER': 'me@example.com.sandbox', 'PASSWORD': 'bad password'}
         mock_session.add_expected(3 * [MockRequest(
             'POST', 'mock:///services/oauth2/token',
-            response_data='{"error":"invalid_client_id","error_description":"client identifier invalid"}',
+            resp='{"error":"invalid_client_id","error_description":"client identifier invalid"}',
             request_type='*', response_type='', status_code=400,)])
         auth_obj = auth.SalesforceAuth.create_subclass_instance(
             sf_alias, settings_dict=settings_dict, _session=mock_session)

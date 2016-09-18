@@ -93,9 +93,9 @@ class MockRequestsSession(object):
                 output = []
                 output.append("%r, %r" % (method, url))
                 if data:
-                    output.append("request_data=%r" % data)
+                    output.append("req=%r" % data)
                 if response.text:
-                    output.append("response_data=%r" % response.text)
+                    output.append("resp=%r" % response.text)
                 request_type = kwargs.get('headers', {}).get('Content-Type', '')
                 if request_type != 'application/json' and data:
                     output.append("request_type=%r" % request_type)
@@ -134,17 +134,17 @@ class MockRequest(object):
     If the parameter 'request_type' is '*' then the request is not tested
     """
     def __init__(self, method, url,
-                 request_data=None, response_data=None,
+                 req=None, resp=None,
                  request_json=None,
                  request_type='application/json', response_type=APPLICATION_JSON,
                  status_code=200):
         self.method = method
         self.url = url
-        self.request_data = request_data
-        self.response_data = response_data
+        self.request_data = req
+        self.response_data = resp
         self.request_json = request_json
-        self.request_type = request_type if (request_data or request_type == '*') else None
-        self.response_type = response_type if response_data else None
+        self.request_type = request_type if (req or request_type == '*') else None
+        self.response_type = response_type if resp else None
         self.status_code = status_code
 
     def request(self, method, url, data=None, testcase=None, **kwargs):
@@ -167,7 +167,7 @@ class MockRequest(object):
         if 'json'in kwargs and kwargs['json'] is None:
             del kwargs['json']
         if kwargs:
-            print("KWARGS = %s" % kwargs)  # TODO
+            print("KWARGS = %s" % kwargs, url)  # TODO
         return MockJsonResponse(self.response_data, status_code=self.status_code, resp_content_type=self.response_type)
 
 
