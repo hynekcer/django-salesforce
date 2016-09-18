@@ -273,10 +273,10 @@ class TimeField(SfField, models.TimeField):
 
 class ForeignKey(SfField, models.ForeignKey):
     """ForeignKey with sf_read_only attribute and acceptable by Salesforce."""
-    def __init__(self, *args, **kwargs):
+    def __init__(self, to, *args, **kwargs):
         # Checks parameters before call to ancestor.
-        if DJANGO_19_PLUS and args[1:2]:
-            on_delete = args[1].__name__
+        if DJANGO_19_PLUS and args:
+            on_delete = args[0].__name__
         else:
             on_delete = kwargs.get('on_delete', models.CASCADE).__name__
         if on_delete not in ('PROTECT', 'DO_NOTHING'):
@@ -286,12 +286,11 @@ class ForeignKey(SfField, models.ForeignKey):
             # CreatedBy etc. Some related objects are deleted automatically
             # by SF even with DO_NOTHING in Django, e.g. for
             # Campaign/CampaignMember
-            related_object = args[0]
             warnings.warn(
                 "Only foreign keys with on_delete = PROTECT or "
                 "DO_NOTHING are currently supported, not %s related to %s"
-                % (on_delete, related_object))
-        super(ForeignKey, self).__init__(*args, **kwargs)
+                % (on_delete, to))
+        super(ForeignKey, self).__init__(to, *args, **kwargs)
 
     def get_attname(self):
         if self.name.islower():
