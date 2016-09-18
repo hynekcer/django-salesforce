@@ -9,6 +9,28 @@ Principial differences to other packages: (therefore not used "requests-mock" et
       switched to "record" mode inside the same session, e.g if a test test is
       extended by additional requests
 
+    properties of modes:
+        2 sources or requests: application / recorded
+        2 sources or responses: Force.com server / recorded
+
+        need authentize before session?: (bool)
+        record raw data or anonimize all ID
+        record the traffic or to check and terminate at the first difference or
+            to translate the historyrepla?
+        cleanup after error or wait?
+        a difference should be reported, but it an exception should not be raised before tearDown?
+        * from application to server: * like a normal test
+                                      * record all
+                                      * check
+                                      * check and record after difference
+        * from playback to server: (check that the Force.com API is not changed)
+        * nothing to server: response from playback: * only report differences
+                                                     * stop a different request
+                                                     * switch to server (replay and translate history)
+        compare recorded requests
+        compare test data
+
+        Use raw recorded traffic or to try to find a nice formated equivalent record?
 Parameters
     request_type: (None, 'application/json',... '*') The type '*' is for
         requests where the type and data should not be checked.
@@ -18,6 +40,7 @@ Parameters
            It can be replaced by "json.dumps(request_json)"
 """
 import json
+import re
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connections
@@ -125,6 +148,7 @@ class MockRequest(object):
         self.status_code = status_code
 
     def request(self, method, url, data=None, testcase=None, **kwargs):
+        """Compare the request to the expected. Return the expected response."""
         if testcase is None:
             raise TypeError("Required keyword argument 'testcase' not found")
         testcase.assertEqual(method.upper(), self.method.upper())
@@ -193,3 +217,72 @@ class MockResponse(object):
         return json.loads(self.text, parse_float=parse_float)
 
 MockJsonResponse = MockResponse
+
+
+# Undocumented - useful for tests
+
+
+def case_safe_sf_id(id_15):
+    """
+    Equivalent to Salesforce CASESAFEID()
+
+    Convert a 15 char case-sensitive Id to 18 char case-insensitive Salesforce Id
+    or check the long 18 char ID.
+
+    Long  18 char Id are from SFDC API and from Apex. They are recommended by SF.
+    Short 15 char Id are from SFDC formulas if omitted to use func CASESAFEID(),
+    from reports or from parsed URLs in HTML.
+    The long and short form are interchangable as the input to Salesforce API or
+    to django-salesforce. They only need to be someway normalized if they are
+    used as dictionary keys in a Python application code.
+    """
+    if not id_15:
+        return None
+    if len(id_15) not in (15, 18):
+        raise TypeError("The string %r is not a valid Force.com ID")
+    suffix = []
+    for i in range(0, 15, 5):
+        weight = 1
+        digit = 0
+        for ch in id_15[i:i + 5]:
+            if ch not in '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz':
+                raise TypeError("The string %r is not a valid Force.com ID")
+            if ch.isupper():
+                digit += weight
+            weight *= 2
+        suffix.append(chr(ord('A') + digit) if digit < 26 else str(digit - 26))
+    out = ''.join(suffix)
+    if len(id_15) == 18 and out != id_15[15:]:
+        raise TypeError("The string %r is not a valid Force.com ID")
+    return id_15[:15] + out
+
+
+def check_sf_api_id(id_18):
+    """
+    Check the 18 characters long API ID, no exceptions
+    """
+    try:
+        return case_safe_sf_id(id_18)
+    except TypeError:
+        return None
+
+
+def extract_ids(data_text, data_type=None):
+    """
+    Extract all Force.com ID from REST/SOAP/SOQL request/response (for mock tests)
+
+    Output: iterable of all ID and their positions
+    Parameters: data_type:  can be in ('rest', 'soap', 'soql', None),
+                    where None is for any unknown type
+    """
+    id_pattern = r'([0-9A-Za-z]{18})'
+    PATTERN_MAP = {None: r'[">\']{}["<\']',
+                   'rest': '"{}"',
+                   'soap': '>{}<',
+                   'soql': "'{}'"
+                   }
+    pattern = PATTERN_MAP[data_type].format(id_pattern)
+    for match in re.finditer(pattern, data_text):
+        txt = match.group(1)
+        if case_safe_sf_id(txt):
+            yield txt, (match.start(1), match.end(1))
