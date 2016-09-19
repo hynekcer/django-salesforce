@@ -79,7 +79,9 @@ class MockRequestsSession(object):
         mode = getattr(settings, 'SF_MOCK_MODE', 'playback')
         if mode == 'playback':
             expected = self.expected[self.index]
-            response = expected.request(method, url, data=data, testcase=self.testcase, **kwargs)
+            msg = "Difference at request index %d (from %d)" % (self.index, len(self.expected))
+            response = expected.request(method, url, data=data, testcase=self.testcase,
+                                        msg=msg, **kwargs)
             self.index += 1
             return response
         elif mode in ('record', 'mixed'):
@@ -162,8 +164,9 @@ class MockRequest(object):
         """Compare the request to the expected. Return the expected response."""
         if testcase is None:
             raise TypeError("Required keyword argument 'testcase' not found")
+        msg = kwargs.pop('msg', None)
         testcase.assertEqual(method.upper(), self.method.upper())
-        testcase.assertEqual(url, self.url)
+        testcase.assertEqual(url, self.url, msg=msg)
         if self.response_data:
             response_class = MockJsonResponse if self.default_type == APPLICATION_JSON else MockResponse
         else:
@@ -174,16 +177,16 @@ class MockRequest(object):
                                   status_code=self.status_code,
                                   resp_content_type=self.response_type)
         if 'json' in self.request_type:
-            testcase.assertJSONEqual(data, self.request_data)
+            testcase.assertJSONEqual(data, self.request_data, msg=msg)
         elif 'xml' in self.request_type:
-            testcase.assertXMLEqual(data, self.request_data)
+            testcase.assertXMLEqual(data, self.request_data, msg=msg)
         elif self.request_type != '*':
-            testcase.assertEqual(data, self.request_data)
+            testcase.assertEqual(data, self.request_data, msg=msg)
         if self.request_type != '*':
             request_json = kwargs.pop('json', None)
-            testcase.assertEqual(request_json, self.request_json)
+            testcase.assertEqual(request_json, self.request_json, msg=msg)
         if self.request_type != '*':
-            testcase.assertEqual(request_type.split(';')[0], self.request_type.split(';')[0])
+            testcase.assertEqual(request_type.split(';')[0], self.request_type.split(';')[0], msg=msg)
         kwargs.pop('timeout', None)
         assert kwargs.pop('verify', True) is True
         if 'json'in kwargs and kwargs['json'] is None:
@@ -191,7 +194,7 @@ class MockRequest(object):
         if 'headers' in kwargs and not kwargs['headers']:
             del kwargs['headers']
         if kwargs:
-            print("KWARGS = %s" % kwargs, url)  # TODO
+            print("KWARGS = %s (msg=%s)" % (kwargs, msg), url)  # TODO
         return response
 
 
@@ -219,9 +222,10 @@ class MockTestCase(TestCase):
     def tearDown(self):
         connection = self.sf_connection
         session = connection._sf_session
-        self.assertEqual(session.index, len(session.expected), "Not all expected requests has been used")
+        if not self._outcome.errors or self._outcome.errors[-1][0] is not self or not self._outcome.errors[-1][1]:
+            self.assertEqual(session.index, len(session.expected), "Not all expected requests has been used")
         connection._sf_session, connection._sf_auth = self.save_session_auth
-        super(MockTestCase, self).setUp()
+        super(MockTestCase, self).tearDown()
 
     def mock_add_expected(self, expected_requests):
         self.sf_connection._sf_session.add_expected(expected_requests)
