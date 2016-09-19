@@ -12,36 +12,35 @@ from salesforce.backend.test_helpers import default_is_sf, skipUnless, sf_alias
 try:
     from unittest import mock
 except ImportError:
-    try:
-        import mock
-    except ImportError:
-        mock = None
+    import mock  # the package must be installed for test in Python 2
 
 
 @skipUnless(default_is_sf, "Default database should be any Salesforce.")
 class OAuthTest(TestCase):
 
-    @skipUnless(mock, "mock pakage is required for this test")
-    def test_force_com_cli_auth(self):
+    @mock.patch('salesforce.auth.open', create=True)
+    @mock.patch('salesforce.auth.os')
+    def test_force_com_cli_auth(self, mock_os, mock_open):
         """Test Force.com CLI authentication by a mocked file"""
         auth_obj = auth.SalesforceAuth.create_subclass_instance(
             sf_alias,
             settings_dict={'ENGINE': 'salesforce.backend', 'AUTH': 'salesforce.auth.ForceComCliAuth',
                            'USER': 'me@example.com'},
-            _session=requests.Session())
-        with mock.patch('salesforce.auth.open') as mock_open:
-            mock_open.return_value = io.StringIO(
-                u'{"AccessToken":"00A12000000a1Bc!...",'   # anonymized all
-                u'"Id":"https://login.salesforce.com/id/00A12000000a1BcEAI/00512000001AxneAAC",'
-                u'"UserId":"00512000001AxneAAC","InstanceUrl":"https://na3.salesforce.com",'
-                u'"IssuedAt":"1473245937490","Scope":"full","IsCustomEP":false,"Namespace":"",'
-                u'"ApiVersion":"","ForceEndpoint":0}')
-            self.assertEqual(auth_obj.authenticate()['instance_url'], 'https://na3.salesforce.com')
+            _session=requests.Session()
+        )
+        mock_os.environ = {'HOME': 'whatever_nonsense'}  # HOME is undefined in tox
+        mock_open.return_value = io.StringIO(
+            u'{"AccessToken":"00A12000000a1Bc!...",'   # anonymized all
+            u'"Id":"https://login.salesforce.com/id/00A12000000a1BcEAI/00512000001AxneAAC",'
+            u'"UserId":"00512000001AxneAAC","InstanceUrl":"https://na3.salesforce.com",'
+            u'"IssuedAt":"1473245937490","Scope":"full","IsCustomEP":false,"Namespace":"",'
+            u'"ApiVersion":"","ForceEndpoint":0}'
+        )
+        self.assertEqual(auth_obj.authenticate()['instance_url'], 'https://na3.salesforce.com')
 
 
 class InvalidPasswordTest(MockTestCase):
 
-    @skipUnless(mock, "mock pakage is required for this test")
     @override_settings(SF_MOCK_MODE='playback')
     def test_invalid_password_no_lock(self):
         """Verify SF is protected from flood of invalid logins"""

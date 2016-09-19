@@ -15,8 +15,6 @@ class DjangoTest(models.Model):
                             default=models.DEFAULTED_ON_CREATE, blank=True, null=True)
     test_bool = models.BooleanField(custom=True, default=models.DEFAULTED_ON_CREATE)
     test_text = models.CharField(custom=True, max_length=42, blank=True, null=True)
-    django_test = models.CharField(custom=True, db_column='django_Test__c', max_length=20,
-                                   verbose_name='django_Test', blank=True, null=True)
     test_date_time = models.DateTimeField(custom=True, verbose_name='Test DateTime', blank=True, null=True)
     test_picklist = models.CharField(
         custom=True, db_column='Test_Picklist__c', max_length=255, verbose_name='Test Picklist',
@@ -29,6 +27,8 @@ class DjangoTest(models.Model):
         blank=True, null=True
     )
     test_reference_self = models.ForeignKey('self', on_delete=models.DO_NOTHING, custom=True, blank=True, null=True)
+    # django_test = models.CharField(custom=True, db_column='django_Test__c', max_length=20,
+    #                                verbose_name='django_Test', blank=True, null=True)
     children_count = models.DecimalField(custom=True, db_column='children_count__c',
                                          max_digits=18, decimal_places=0, verbose_name='children count',
                                          sf_read_only=models.READ_ONLY, blank=True, null=True)

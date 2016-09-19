@@ -78,7 +78,8 @@ class MockRequestsSession(object):
         """Assert the request equals the expected, return historical response"""
         mode = getattr(settings, 'SF_MOCK_MODE', 'playback')
         if mode == 'playback':
-            response = self.expected[self.index].request(method, url, data=data, testcase=self.testcase, **kwargs)
+            expected = self.expected[self.index]
+            response = expected.request(method, url, data=data, testcase=self.testcase, **kwargs)
             self.index += 1
             return response
         elif mode in ('record', 'mixed'):
@@ -96,15 +97,22 @@ class MockRequestsSession(object):
                     output.append("req=%r" % data)
                 if response.text:
                     output.append("resp=%r" % response.text)
+
                 request_type = kwargs.get('headers', {}).get('Content-Type', '')
-                if request_type != 'application/json' and data:
-                    output.append("request_type=%r" % request_type)
                 response_type = response.headers.get('Content-Type', '')
-                if response_type != APPLICATION_JSON and response.text:
+                basic_type = request_type or response_type
+                if basic_type.startswith('application/json'):
+                    request_class = MockJsonRequest
+                else:
+                    request_class = MockRequest
+                    output.append("request_type=%r" % request_type)
+
+                if response_type and (response_type != basic_type or request_class is MockRequest):
                     output.append("response_type=%r" % response_type)
                 if response.status_code != 200:
                     output.append("status_code=%d" % response.status_code)
-                print("=== MOCK RECORD {testcase}\nMockJsonRequest(\n    {params})\n===".format(
+                print("=== MOCK RECORD {testcase}\n{class_name}(\n    {params})\n===".format(
+                      class_name=request_class.__name__,
                       testcase=self.testcase,
                       params=',\n    '.join(output)
                       ))
@@ -129,22 +137,25 @@ class MockRequestsSession(object):
 
 
 class MockRequest(object):
-    """Mock request/response for some unit tests offline
+    """Recorded Mock request to be compared and response to be used
 
+    for some unit tests offline
     If the parameter 'request_type' is '*' then the request is not tested
     """
+    default_type = None
+
     def __init__(self, method, url,
                  req=None, resp=None,
                  request_json=None,
-                 request_type='application/json', response_type=APPLICATION_JSON,
+                 request_type=None, response_type=None,
                  status_code=200):
         self.method = method
         self.url = url
         self.request_data = req
         self.response_data = resp
         self.request_json = request_json
-        self.request_type = request_type if (req or request_type == '*') else None
-        self.response_type = response_type if resp else None
+        self.request_type = request_type or (self.default_type if method not in ('GET', 'DELETE') else '') or ''
+        self.response_type = response_type
         self.status_code = status_code
 
     def request(self, method, url, data=None, testcase=None, **kwargs):
@@ -153,27 +164,40 @@ class MockRequest(object):
             raise TypeError("Required keyword argument 'testcase' not found")
         testcase.assertEqual(method.upper(), self.method.upper())
         testcase.assertEqual(url, self.url)
-        if 'json' in (self.request_type or ''):
+        if self.response_data:
+            response_class = MockJsonResponse if self.default_type == APPLICATION_JSON else MockResponse
+        else:
+            response_class = MockResponse
+        if data or json:
+            request_type = kwargs.get('headers', {}).pop('Content-Type', '')
+        response = response_class(self.response_data,
+                                  status_code=self.status_code,
+                                  resp_content_type=self.response_type)
+        if 'json' in self.request_type:
             testcase.assertJSONEqual(data, self.request_data)
-        elif 'xml' in (self.request_type or ''):
+        elif 'xml' in self.request_type:
             testcase.assertXMLEqual(data, self.request_data)
         elif self.request_type != '*':
             testcase.assertEqual(data, self.request_data)
         if self.request_type != '*':
             request_json = kwargs.pop('json', None)
             testcase.assertEqual(request_json, self.request_json)
+        if self.request_type != '*':
+            testcase.assertEqual(request_type.split(';')[0], self.request_type.split(';')[0])
         kwargs.pop('timeout', None)
         assert kwargs.pop('verify', True) is True
         if 'json'in kwargs and kwargs['json'] is None:
             del kwargs['json']
+        if 'headers' in kwargs and not kwargs['headers']:
+            del kwargs['headers']
         if kwargs:
             print("KWARGS = %s" % kwargs, url)  # TODO
-        return MockJsonResponse(self.response_data, status_code=self.status_code, resp_content_type=self.response_type)
+        return response
 
 
 class MockJsonRequest(MockRequest):
     """Mock JSON request/response for some unit tests offline"""
-    pass  # parent defaults are ok
+    default_type = APPLICATION_JSON
 
 
 class MockTestCase(TestCase):
@@ -208,15 +232,23 @@ class MockTestCase(TestCase):
 
 class MockResponse(object):
     """Mock response for some unit tests offline"""
-    def __init__(self, text, resp_content_type=APPLICATION_JSON, status_code=200):
+    default_type = None
+
+    def __init__(self, text, resp_content_type=None, status_code=200):
         self.text = text
         self.status_code = status_code
-        self.content_type = resp_content_type
+        self.content_type = resp_content_type if resp_content_type is not None else self.default_type
 
     def json(self, parse_float=None):
         return json.loads(self.text, parse_float=parse_float)
 
-MockJsonResponse = MockResponse
+    @property
+    def headers(self):
+        return {'Content-Type': self.content_type} if self.content_type else {}
+
+
+class MockJsonResponse(MockResponse):
+    default_type = APPLICATION_JSON
 
 
 # Undocumented - useful for tests
