@@ -7,6 +7,7 @@
 
 import os
 import re
+import sys
 import subprocess
 
 # disables creation of .DS_Store files inside tarballs on Mac OS X
@@ -67,6 +68,7 @@ def autosetup():
 
         # setuptools won't auto-detect Git managed files without this
         setup_requires=[] if not with_git else ["setuptools_git >= 0.4.2"],
+        tests_require=[] if sys.version_info[0] == 3 else ['mock'],
 
         install_requires=requirements_txt,
 
