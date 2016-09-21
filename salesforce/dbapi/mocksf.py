@@ -220,12 +220,31 @@ class MockTestCase(TestCase):
         connection._sf_auth = connection._sf_session.auth
 
     def tearDown(self):
+        if hasattr(self, '_outcome'):  # Python 3.4+
+            result = self.defaultTestResult()  # these 2 methods have no side effects
+            self._feedErrorsToResult(result, self._outcome.errors)
+        else:  # Python 3.2 - 3.3 or 2.7
+            result = getattr(self, '_outcomeForDoCleanups', self._resultForDoCleanups)
+        error = self.list2reason(result.errors)
+        failure = self.list2reason(result.failures)
+        ok = not error and not failure
+        # # demo:   report short info immediately (not important)
+        # if not ok:
+        #     typ, text = ('ERROR', error) if error else ('FAIL', failure)
+        #     msg = [x for x in text.split('\n')[1:] if not x.startswith(' ')][0]
+        #     print("\n%s: %s\n     %s" % (typ, self.id(), msg))
+
         connection = self.sf_connection
         session = connection._sf_session
-        if not self._outcome.errors or self._outcome.errors[-1][0] is not self or not self._outcome.errors[-1][1]:
+        # import pdb; pdb.set_trace()
+        if ok:
             self.assertEqual(session.index, len(session.expected), "Not all expected requests has been used")
         connection._sf_session, connection._sf_auth = self.save_session_auth
         super(MockTestCase, self).tearDown()
+
+    def list2reason(self, exc_list):
+        if exc_list and exc_list[-1][0] is self:
+            return exc_list[-1][1]
 
     def mock_add_expected(self, expected_requests):
         self.sf_connection._sf_session.add_expected(expected_requests)
