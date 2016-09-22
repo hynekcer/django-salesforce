@@ -256,6 +256,12 @@ class CursorWrapper(object):
         self.db.last_chunk_len = None
         sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
         if sqltype == 'SELECT':
+            if sql == "SELECT django_migrations.app, django_migrations.name FROM django_migrations":
+                # It is required by "makemigrations" in Django 1.10 that this query
+                # must be accepted. Empty results are possible. Later it can be replaced by:
+                # q = "SELECT app__c, Name FROM django_migrations__c"
+                self.results = iter([])
+                return
             self.qquery = QQuery(sql)
             self.description = [(alias, None, None, None, name) for alias, name in
                                 zip(self.qquery.aliases, self.qquery.fields)]

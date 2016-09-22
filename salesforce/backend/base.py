@@ -21,6 +21,7 @@ from salesforce.backend.client import DatabaseClient
 from salesforce.backend.creation import DatabaseCreation
 from salesforce.backend.validation import DatabaseValidation
 from salesforce.backend.operations import DatabaseOperations
+from salesforce.backend.schema import DatabaseSchemaEditor
 from salesforce.backend import introspection
 from salesforce.dbapi.base import SessionEncap
 from salesforce.dbapi.exceptions import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
@@ -84,6 +85,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     }
 
     Database = Database
+    SchemaEditorClass = DatabaseSchemaEditor
 
     def __init__(self, settings_dict, alias=None):
         if alias is None:
