@@ -7,10 +7,8 @@ PY3 = sys.version_info[0] == 3
 # All error types described in DB API 2 are implemented the same way as in
 # Django 1.8, otherwise some exceptions are not correctly reported in it.
 
-Exception_ = Exception if PY3 else StandardError  # NOQA
 
-
-class Error(Exception_):
+class Error(Exception):
     pass
 
 
