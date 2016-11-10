@@ -27,8 +27,8 @@ def parse_rfc_2616(timestamp_string):
     >>> parse_rfc_2616('Tue, 13 Sep 2016 15:34:51 GMT')
     datetime.datetime(2016, 9, 13, 15, 34, 51, tzinfo=<UTC>)
     """
-    RFC_2616_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
-    timestamp = datetime.datetime.strptime(timestamp_string, RFC_2616_FORMAT)
+    from email.utils import parsedate
+    timestamp = datetime.datetime(*parsedate(timestamp_string)[:6])
     return timestamp.replace(tzinfo=pytz.utc)
 
 
