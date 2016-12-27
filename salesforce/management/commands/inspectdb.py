@@ -59,7 +59,7 @@ def fix_international(text):
     for match in re.finditer(r'(?<=[^\\])(?:\\x[0-9a-f]{2}|\\u[0-9a-f]{4})', text):
         start, end, group = match.start(), match.end(), match.group()
         out.append(text[last:start])
-        c = group.decode('text_type_escape')
+        c = group.decode('unicode_escape')
         out.append(c if ord(c) > 160 and ord(c) != 173 else group)
         last = end
     out.append(text[last:])
