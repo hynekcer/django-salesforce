@@ -372,7 +372,7 @@ class CursorWrapper(object):
                 query.where.children[0].lookup_name in ('exact', 'in') and
                 query.where.children[0].lhs.target.column == 'Id')
         pk = query.where.children[0].rhs
-        assert pk
+        assert pk, "Nothing to update"
         headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)
         log.debug('UPDATE %s(%s)%s' % (table, pk, post_data))
