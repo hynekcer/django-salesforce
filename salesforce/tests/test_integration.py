@@ -39,6 +39,7 @@ log = logging.getLogger(__name__)
 QUIET_KNOWN_BUGS = strtobool(os.getenv('QUIET_KNOWN_BUGS', 'false'))
 test_email = 'test-djsf-unittests%s@example.com' % uid
 sf_databases = [db for db in connections if router.is_sf_database(db)]
+sf_alias_can_reauthenticate = getattr(getattr(connections[sf_alias], '_sf_auth', None), 'can_reauthenticate', False)
 
 _sf_tables = []
 
@@ -137,6 +138,10 @@ class BasicSOQLRoTest(TestCase):
     def test_simple_select_related(self):
         """Verify that simple_selct_related does not require additional queries.
         """
+        xq = Contact.objects.filter(account__Name='sf_test account').query
+        import pdb; pdb.set_trace()
+        xx = xq.get_compiler('default')
+        xx.as_sql()
         test_account = Account(Name='sf_test account')
         test_account.save()
         test_contact = Contact(first_name='sf_test', last_name='my', account=test_account)
@@ -460,6 +465,7 @@ class BasicSOQLRoTest(TestCase):
         User.objects.get(Username__iendswith=self.current_user[1:].upper())
         # Operators regex and iregex not tested because they are not supported.
 
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_bulk_create(self):
         """Create two Contacts by one request and find them.
@@ -481,6 +487,7 @@ class BasicSOQLRoTest(TestCase):
         finally:
             account.delete()
 
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_bulk_update(self):
         """Update two Contacts by one request.
         """
@@ -790,8 +797,7 @@ class BasicSOQLRoTest(TestCase):
             c2.delete()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @skipUnless(connections[sf_alias]._sf_auth.can_reauthenticate,
-                "This test require aut client that can reauthenticate")
+    @skipUnless(sf_alias_can_reauthenticate, "This test require aut client that can reauthenticate")
     def test_expired_auth_id(self):
         """Test the code for expired auth ID for multiple SF databases.
 

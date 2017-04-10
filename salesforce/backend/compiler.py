@@ -62,7 +62,7 @@ class SQLCompiler(compiler.SQLCompiler):
         self.quote_cache[name] = r
         return r
 
-    def execute_sql(self, result_type=constants.MULTI):
+    def execute_sql(self, result_type=constants.MULTI, chunked_fetch=False):
         """
         Run the query against the database and returns the result(s). The
         return value is a single data item if result_type is SINGLE, or an
@@ -75,6 +75,7 @@ class SQLCompiler(compiler.SQLCompiler):
         is needed, as the filters describe an empty set. In that case, None is
         returned, to avoid any unnecessary database interaction.
         """
+        # TODO the new parameter "chunked_fetch" (Django 1.11) is ignored
         try:
             sql, params = self.as_sql()
             if not sql:
@@ -133,6 +134,7 @@ class SQLCompiler(compiler.SQLCompiler):
             # docstring of get_from_clause() for details.
             from_, f_params = self.get_from_clause()
 
+            import pdb; pdb.set_trace()
             if DJANGO_19_PLUS:
                 where, w_params = self.compile(self.where) if self.where is not None else ("", [])
                 having, h_params = self.compile(self.having) if self.having is not None else ("", [])
@@ -217,6 +219,8 @@ class SQLCompiler(compiler.SQLCompiler):
                     raise DatabaseError('NOWAIT is not supported on this database backend.')
                 result.append(self.connection.ops.for_update_sql(nowait=nowait))
 
+            print(soql_trans)
+            print(result)
             return ' '.join(result), tuple(params)
         finally:
             # Finally do cleanup - get rid of the joins we created above.
@@ -391,16 +395,6 @@ class SalesforceWhereNode(where.WhereNode):
             data = IsNull(data.lhs, data.rhs)
         return super(SalesforceWhereNode, self).add(data, conn_type, **kwargs)
 
-    as_salesforce = as_sql
-    del as_sql
-
-#   def as_salesforce(self, qn, connection):
-#       import pprint
-#       print('join_map:')
-#       pprint.PrettyPrinter(width=80).pprint(qn.query.join_map)
-#       import pdb; pdb.set_trace()
-#       return self.as_sql(qn, connection)
-
 
 class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
     def execute_sql(self, return_id=False):
@@ -451,8 +445,9 @@ class Range(models.lookups.Range):
         if connection.vendor == 'salesforce':
             lhs, lhs_params = self.process_lhs(qn, connection)
             rhs, rhs_params = self.process_rhs(qn, connection)
-            assert rhs == ['%s', '%s']
-            params = lhs_params + rhs_params[:1] + lhs_params + rhs_params[1:2]
+            assert tuple(rhs) == ('%s', '%s')  # tuple in Django 1.11+, list in old Django
+            assert len(rhs_params) == 2
+            params = lhs_params + [rhs_params[0]] + lhs_params + [rhs_params[1]]
             # The symbolic parameters %s are again substituted by %s. The real
             # parameters will be passed finally directly to CursorWrapper.execute
             return '(%s >= %s AND %s <= %s)' % (lhs, rhs[0], lhs, rhs[1]), params

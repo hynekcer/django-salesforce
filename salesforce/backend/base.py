@@ -22,11 +22,12 @@ from salesforce.backend.creation import DatabaseCreation
 from salesforce.backend.validation import DatabaseValidation
 from salesforce.backend.operations import DatabaseOperations
 from salesforce.backend.schema import DatabaseSchemaEditor
-from salesforce.backend import introspection
+from salesforce.backend.introspection import DatabaseIntrospection
 from salesforce.dbapi.base import SessionEncap
 from salesforce.dbapi.exceptions import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
 from salesforce.dbapi import driver as Database, get_max_retries
 # from django.db.backends.signals import connection_created
+from salesforce import DJANGO_111_PLUS
 
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.base.features import BaseDatabaseFeatures
@@ -87,18 +88,29 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     Database = Database
     SchemaEditorClass = DatabaseSchemaEditor
 
+    if DJANGO_111_PLUS:
+        # Classes instantiated in __init__().
+        client_class = DatabaseClient
+        creation_class = DatabaseCreation
+        features_class = DatabaseFeatures
+        introspection_class = DatabaseIntrospection
+        ops_class = DatabaseOperations
+        validation_class = DatabaseValidation
+
     def __init__(self, settings_dict, alias=None):
         if alias is None:
             alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
         if not settings_dict['NAME']:
             settings_dict['NAME'] = settings_dict['USER'] or alias
         super(DatabaseWrapper, self).__init__(settings_dict, alias)
-        self.features = DatabaseFeatures(self)
-        self.ops = DatabaseOperations(self)
-        self.client = DatabaseClient(self)
-        self.creation = DatabaseCreation(self)
-        self.introspection = introspection.DatabaseIntrospection(self)
-        self.validation = DatabaseValidation(self)
+
+        if not DJANGO_111_PLUS:
+            self.features = DatabaseFeatures(self)
+            self.ops = DatabaseOperations(self)
+            self.client = DatabaseClient(self)
+            self.creation = DatabaseCreation(self)
+            self.introspection = DatabaseIntrospection(self)
+            self.validation = DatabaseValidation(self)
         self._sf_session = None
         # configurable class Salesforce***Auth - combined with validate_setttings()
         self._sf_auth = SalesforceAuth.create_subclass_instance(db_alias=self.alias,

@@ -1,8 +1,9 @@
 from unittest import TestCase
 from salesforce.backend.subselect import (
-        find_closing_parenthesis, split_subquery, transform_except_subquery,
-        mark_quoted_strings, subst_quoted_strings, simplify_expression,
-        QQuery)
+    find_closing_parenthesis, split_subquery, transform_except_subquery,
+    mark_quoted_strings, subst_quoted_strings, simplify_expression,
+    QQuery)
+from salesforce.dbapi.exceptions import ProgrammingError
 from salesforce.dbapi.mocksf import MockJsonResponse
 
 
@@ -24,11 +25,11 @@ class TestSubSelectSearch(TestCase):
 
     def test_split_subquery(self):
         sql = " SELECT a, ( SELECT x FROM y) FROM b WHERE (c IN (SELECT p FROM q WHERE r = %s) AND c = %s)"
-        expected = ("SELECT a, (&) FROM b WHERE (c IN (&) AND c=%s)",
-                    [("SELECT x FROM y", []),
-                     ("SELECT p FROM q WHERE r=%s", [])
+        expected = ("SELECT a, (&) FROM b WHERE (c IN (&) AND c=%s)", [2], [],
+                    [("SELECT x FROM y", [], [], []),
+                     ("SELECT p FROM q WHERE r=%s", [1], [], [])
                      ])
-        self.assertEqual(split_subquery(sql), expected)
+        self.assertEqual(split_subquery(sql, [1, 2]), expected)
 
     def test_nested_subquery(self):
         def func(x):
@@ -39,9 +40,9 @@ class TestSubSelectSearch(TestCase):
 
     def test_split_nested_subquery(self):
         sql = "SELECT a, (SELECT x, (SELECT p FROM q) FROM y) FROM b"
-        expected = ("SELECT a, (&) FROM b",
-                    [("SELECT x, (&) FROM y",
-                      [("SELECT p FROM q", [])]
+        expected = ("SELECT a, (&) FROM b", [], [],
+                    [("SELECT x, (&) FROM y", [], [],
+                      [("SELECT p FROM q", [], [], [])]
                       )]
                     )
         self.assertEqual(split_subquery(sql), expected)
@@ -65,10 +66,10 @@ class QQueryTest(TestCase):
         sql = "SELECT Id, Account.Name FROM Contact LIMIT 1"
         mock_response = MockJsonResponse(  # inserted formating whitespace
             '{"totalSize":1, "done":true, "records":[{'
-            '   "attributes":{"type":"Contact", "url":"/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"},'
+            '   "attributes":{"type":"Contact", "url":"/services/data/v39.0/sobjects/Contact/003A000000wJICkIAO"},'
             '   "Id":  "003A000000wJICkIAO",'
             '   "Account":{'
-            '     "attributes":{"type": "Account", "url": "/services/data/v37.0/sobjects/Account/001A000000w1KuKIAU"},'
+            '     "attributes":{"type": "Account", "url": "/services/data/v39.0/sobjects/Account/001A000000w1KuKIAU"},'
             '     "Name": "django-salesforce test"}}]}')
         mock_cursor = 'fake_any_non_empty_object'
         expected = [['003A000000wJICkIAO', 'django-salesforce test']]
@@ -86,8 +87,8 @@ class ReplaceQuotedStringsTest(TestCase):
         inner("a'bc'd", ("a@d", ['bc']))
         inner(r"a'bc\\'d", ("a@d", ['bc\\']))
         inner(r"a'\'\\'b''''", ("a@b@@", ['\'\\', '', '']))
-        self.assertRaises(AssertionError, mark_quoted_strings, r"a'bc'\\d")
-        self.assertRaises(AssertionError, mark_quoted_strings, "a'bc''d")
+        self.assertRaises(ProgrammingError, mark_quoted_strings, r"a'bc'\\d")
+        self.assertRaises(ProgrammingError, mark_quoted_strings, "a'bc''d")
 
     def test_simplify_expression(self):
         self.assertEqual(simplify_expression(' a \t b  c . . d '), 'a b c..d')

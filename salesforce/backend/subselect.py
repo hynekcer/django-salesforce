@@ -16,6 +16,7 @@ require a combined parser for parentheses and commas.
 Unsupported GROUP BY ROLLUP and GROUP BY CUBE
 """
 import datetime
+import itertools
 import re
 import pytz
 from salesforce.dbapi.exceptions import ProgrammingError
@@ -41,7 +42,7 @@ class QQuery(object):
     # type of query: QRootQuery, QFieldSubquery, QWhereSubquery
     # type of field: QField, QAggregation, QFieldSubquery
 
-    def __init__(self, soql=None):
+    def __init__(self, soql=None, params=None, literals=None, _is_safe=False):
         self.soql = None
         self.fields = []
         # dictionary of chil to parent relationships - lowercase keys
@@ -57,13 +58,20 @@ class QQuery(object):
         self.extra_soql = None
         self.subqueries = None
         if soql:
-            self._from_sql(soql)
+            self._from_sql(soql, params=params, literals=literals, _is_safe=_is_safe)
 
-    def _from_sql(self, soql):
+    def _from_sql(self, soql, params=None, literals=None, _is_safe=False):
         """Create Force.com SOQL tree structure from SOQL"""
         assert not self.soql, "Don't use _from_sql method directly"
-        self.soql = soql
-        soql, self.subqueries = split_subquery(soql)
+        self.soql = self.soql_0 = soql
+        if ' AS Col' in self.soql_0:
+            # due to Django 1.11+
+            # import pdb; pdb.set_trace()
+            soql2, literals = mark_quoted_strings(soql)
+            soql2 = re.sub(r' AS Col\d+', '', soql2)
+            self.soql = subst_quoted_strings(soql2, literals)
+            # self.subqueries = [(re.sub(r' AS Col\d+', '', x), params) for x, params in self.subqueries]
+        soql, params, literals, self.subqueries = split_subquery(self.soql, params)
         match_parse = re.match(r'SELECT (.*) FROM (\w+)\b(.*)$', soql, re.I)
         if not match_parse:
             raise ProgrammingError('Invalid SQL: %s' % self.soql)
@@ -75,7 +83,6 @@ class QQuery(object):
         consumed_subqueries = 0
         expr_alias_counter = 0
         #
-        # import pdb; pdb.set_trace()
         if not self.is_plain_count:
             for field in fields:
                 if self.is_aggregation:
@@ -113,6 +120,10 @@ class QQuery(object):
                 self.fields.append(field)
         # TODO it is not currently necessary to parse the exta_soql
         pass
+
+    def to_soql(self):
+        """Reconstuct the (modified) query thee back to SOQL"""
+        return
 
     def _make_flat(self, row_dict, path, subroots, cursor=None):
         """Replace the nested dict objects by a flat dict with keys "object.object.name"."""
@@ -182,6 +193,10 @@ def mark_quoted_strings(sql):
     """Mark all quoted strings in the SOQL by '@' and get them as params,
     with respect to all escaped backslashes and quotes.
     """
+    def check_soql_chars(soql):
+        if not out_pattern.match(soql):
+            raise ProgrammingError("Some unquoted character is not allowed in SOQL:\n  %r" % soql)
+
     pm_pattern = re.compile(r"'[^\\']*(?:\\[\\'][^\\']*)*'")
     bs_pattern = re.compile(r"\\([\\'])")
     out_pattern = re.compile("^(?:[-!()*+,.:<=>\w\s|%s])*$")
@@ -190,11 +205,11 @@ def mark_quoted_strings(sql):
     params = []
     for match in pm_pattern.finditer(sql):
         out.append(sql[start:match.start()])
-        assert out_pattern.match(sql[start:match.start()])
+        check_soql_chars(sql[start:match.start()])
         params.append(bs_pattern.sub('\\1', sql[match.start() + 1:match.end() - 1]))
         start = match.end()
     out.append(sql[start:])
-    assert out_pattern.match(sql[start:])
+    check_soql_chars(sql[start:])
     return '@'.join(out), params
 
 
@@ -248,25 +263,55 @@ def transform_except_subquery(sql, func):
     return ''.join(out)
 
 
-def split_subquery(sql):
+class Ns(object):
+    def __init__(self, **kw):
+        vars(self).update(kw)
+
+
+def split_subquery(sql, params=None, literals=None, _is_safe=False):
     """Split on subqueries and replace them by '&'."""
-    sql, params = mark_quoted_strings(sql)
+    def work_fragment(endpos, suffix=None):
+        """add the soql fragmens to a apropriate output"""
+        n_lit = sql.count('@', ns.start, endpos)
+        n_param = sql.count('%s', ns.start, endpos)
+        out = dict(
+            sql=sql[ns.start:endpos] + (suffix or ''),
+            params=params[ns.i_param:ns.i_param + n_param],
+            literals=literals[ns.i_lit:ns.i_lit + n_lit],
+            _is_safe=True,
+        )
+        ns.start = endpos
+        ns.i_param += n_param
+        ns.i_lit += n_lit
+        return out
+
+    # prepare
+    params = params or []
+    if _is_safe:
+        assert isinstance(literals, list)
+    else:
+        sql, literals = mark_quoted_strings(sql)
+    assert len(params) == sql.count('%s')
+    assert len(literals) == sql.count('@')
     sql = simplify_expression(sql)
-    _ = params  # NOQA
-    start = 0
-    out = []
+    ns = Ns(start=0, i_param=0, i_lit=0)
+    out_frags = []
     subqueries = []
     pattern = re.compile(r'\(SELECT\b', re.I)
-    match = pattern.search(sql, start)
+
+    # loop
+    match = pattern.search(sql, ns.start)
     while match:
-        out.append(sql[start:match.start() + 1] + '&')
-        start, pos = find_closing_parenthesis(sql, match.start())
-        start, pos = start + 1, pos - 1
-        subqueries.append(split_subquery(sql[start:pos]))
-        start = pos
-        match = pattern.search(sql, start)
-    out.append(sql[start:len(sql)])
-    return ''.join(out), subqueries
+        out_frags.append(work_fragment(match.start() + 1, suffix='&'))
+        #
+        _, end = find_closing_parenthesis(sql, ns.start - 1)
+        subqueries.append(split_subquery(**work_fragment(end - 1)))
+        match = pattern.search(sql, ns.start)
+    out_frags.append(work_fragment(len(sql)))
+    sql = ''.join(x['sql'] for x in out_frags)
+    params = list(itertools.chain(*(x['params'] for x in out_frags)))
+    literals = list(itertools.chain(*(x['literals'] for x in out_frags)))
+    return sql, params, literals, subqueries
 
 
 def simplify_expression(txt):

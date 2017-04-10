@@ -13,10 +13,10 @@ from salesforce.dbapi.mocksf import MockJsonRequest, MockTestCase
 class TestMock(MockTestCase):
     def prepare_expected(self):
         self.mock_add_expected(MockJsonRequest(
-            'GET', 'mock:///services/data/v37.0/query/?q=SELECT+Name+FROM+Contact+LIMIT+1',
+            'GET', 'mock:///services/data/v39.0/query/?q=SELECT+Name+FROM+Contact+LIMIT+1',
             resp=('{"totalSize": 1, "done": true, "records": [{'
                   '  "attributes": {"type": "Contact",'
-                  '                 "url": "/services/data/v37.0/sobjects/Contact/003A000000wJICkIAO"},'
+                  '                 "url": "/services/data/v39.0/sobjects/Contact/003A000000wJICkIAO"},'
                   '  "Name": "django-salesforce test"}]}')
         ))
 

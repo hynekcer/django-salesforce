@@ -147,7 +147,7 @@ class Cursor(object):
         sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
         # TODO
         if sqltype == 'SELECT':
-            self.qquery = QQuery(sql)
+            self.qquery = QQuery(sql, params=parameters)
             self.description = [(alias, None, None, None, name) for alias, name in
                                 zip(self.qquery.aliases, self.qquery.fields)]
             cur = CursorWrapper(self.connection)
@@ -262,10 +262,10 @@ class CursorWrapper(object):
                 # q = "SELECT app__c, Name FROM django_migrations__c"
                 self.results = iter([])
                 return
-            self.qquery = QQuery(sql)
+            self.qquery = QQuery(sql, params=args)
             self.description = [(alias, None, None, None, name) for alias, name in
                                 zip(self.qquery.aliases, self.qquery.fields)]
-            response = self.execute_select(sql, args)
+            response = self.execute_select(self.qquery.soql, args)
             data = response.json(parse_float=decimal.Decimal)
             if 'totalSize' in data:
                 self.rowcount = data['totalSize']
@@ -372,6 +372,9 @@ class CursorWrapper(object):
                 query.where.children[0].lookup_name in ('exact', 'in') and
                 query.where.children[0].lhs.target.column == 'Id')
         pk = query.where.children[0].rhs
+        if isinstance(pk, salesforce.backend.sql_query.SalesforceQuery):
+            subquery = pk
+            pk = salesforce.backend.query.SalesforceQuerySet(subquery.model, query=subquery, using=self.db)
         assert pk, "Nothing to update"
         headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)

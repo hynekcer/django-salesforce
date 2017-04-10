@@ -7,14 +7,14 @@ from .models import DjangoTest, DjangoTestDetail
 
 
 QUERY_SANDBOX = MockJsonRequest(
-    'GET', 'mock:///services/data/v37.0/query/?q=SELECT+IsSandbox+FROM+Organization',
+    'GET', 'mock:///services/data/v39.0/query/?q=SELECT+IsSandbox+FROM+Organization',
     resp=('{"totalSize":1,"done":true,"records":[{"attributes":{"type":"Organization",'
-          '"url":"/services/data/v37.0/sobjects/Organization/00DM0000001eBkwMAE"},"IsSandbox":true}]}')
+          '"url":"/services/data/v39.0/sobjects/Organization/00DM0000001eBkwMAE"},"IsSandbox":true}]}')
 )
 
 
 @override_settings(SF_MOCK_MODE='playback')
-@mock.patch('salesforce.API_VERSION', '37.0')  # use the version recorded in playback
+@mock.patch('salesforce.API_VERSION', '39.0')  # use the version recorded in playback
 class CustomTest(MockTestCase):
 
     ROW_DICT_1 = dict(name='sf_test_1',
@@ -26,26 +26,26 @@ class CustomTest(MockTestCase):
                       test_reference_self=None,
                       )
     CREATE_ROW_1 = MockJsonRequest(
-        'POST', 'mock:///services/data/v37.0/sobjects/django_Test__c/',
+        'POST', 'mock:///services/data/v39.0/sobjects/django_Test__c/',
         req=('{"Name": "sf_test_1", "TestBool__c": "true", "TestText__c": "something", '
              '"Test_Picklist__c": "Line 2", "TestMultiselectPicklist__c": "Item 1;Item 3", '
              '"TestReferenceSelf__c": null, "TestDateTime__c": "2016-12-31T23:30:15.000+0000"}'),
         resp='{"id":"a0pM0000002Dy6yIAC","success":true,"errors":[]}',
         status_code=201)
     DELETE_ROW_1 = MockJsonRequest(
-        'DELETE', 'mock:///services/data/v37.0/sobjects/django_Test__c/a0pM0000002Dy6yIAC',
+        'DELETE', 'mock:///services/data/v39.0/sobjects/django_Test__c/a0pM0000002Dy6yIAC',
         status_code=204)
 
     ROW_DICT_2 = dict(name='sf_test_2', test_bool=False)
     CREATE_ROW_2 = MockJsonRequest(
-        'POST', 'mock:///services/data/v37.0/sobjects/django_Test__c/',
+        'POST', 'mock:///services/data/v39.0/sobjects/django_Test__c/',
         req=('{"Name": "sf_test_2", "TestBool__c": "false", "TestText__c": null, '
              '"Test_Picklist__c": null, "TestMultiselectPicklist__c": null, '
              '"TestReferenceSelf__c": null, "TestDateTime__c": null}'),
         resp='{"id":"a0pM0000002Dy9OIAS","success":true,"errors":[]}',
         status_code=201)
     DELETE_ROW_2 = MockJsonRequest(
-        'DELETE', 'mock:///services/data/v37.0/sobjects/django_Test__c/a0pM0000002Dy9OIAS',
+        'DELETE', 'mock:///services/data/v39.0/sobjects/django_Test__c/a0pM0000002Dy9OIAS',
         status_code=204)
 
     def test_insert_one_simple(self):
@@ -66,28 +66,28 @@ class CustomTest(MockTestCase):
             self.CREATE_ROW_1,
             self.CREATE_ROW_2,
             MockJsonRequest(  # update row_1
-                'PATCH', 'mock:///services/data/v37.0/sobjects/django_Test__c/a0pM0000002Dy6yIAC',
+                'PATCH', 'mock:///services/data/v39.0/sobjects/django_Test__c/a0pM0000002Dy6yIAC',
                 req='{"TestReferenceSelf__c": "a0pM0000002Dy9OIAS"}',
                 status_code=204),
             MockJsonRequest(  # update row_2
-                'PATCH', 'mock:///services/data/v37.0/sobjects/django_Test__c/a0pM0000002Dy9OIAS',
+                'PATCH', 'mock:///services/data/v39.0/sobjects/django_Test__c/a0pM0000002Dy9OIAS',
                 req='{"TestReferenceSelf__c": "a0pM0000002Dy6yIAC"}',
                 status_code=204),
             MockJsonRequest(  # create DjangoTestDetail
-                'POST', 'mock:///services/data/v37.0/sobjects/django_Test_detail__c/',
+                'POST', 'mock:///services/data/v39.0/sobjects/django_Test_detail__c/',
                 req='{"Name": "test detail", "Parent__c": "a0pM0000002Dy6yIAC"}',
                 resp='{"id":"a0ZM000000ChaLsMAJ","success":true,"errors":[]}',
                 response_type='application/json;charset=UTF-8',
                 status_code=201),
             MockJsonRequest(  # query count
-                'GET', ('mock:///services/data/v37.0/query/?q='
+                'GET', ('mock:///services/data/v39.0/query/?q='
                         'SELECT+COUNT%28django_Test__c.Id%29+x_sf_count+FROM+django_Test__c'),
                 resp=('{"totalSize":1,"done":true,"records":[{"attributes":{"type":"AggregateResult"},'
                       '"x_sf_count":2}]}')),
             self.DELETE_ROW_2,
             self.DELETE_ROW_1,
             MockJsonRequest(
-                'DELETE', 'mock:///services/data/v37.0/sobjects/django_Test_detail__c/a0ZM000000ChaLsMAJ',
+                'DELETE', 'mock:///services/data/v39.0/sobjects/django_Test_detail__c/a0ZM000000ChaLsMAJ',
                 status_code=204),
         ])
         # test
