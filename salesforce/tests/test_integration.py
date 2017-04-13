@@ -138,10 +138,6 @@ class BasicSOQLRoTest(TestCase):
     def test_simple_select_related(self):
         """Verify that simple_selct_related does not require additional queries.
         """
-        xq = Contact.objects.filter(account__Name='sf_test account').query
-        import pdb; pdb.set_trace()
-        xx = xq.get_compiler('default')
-        xx.as_sql()
         test_account = Account(Name='sf_test account')
         test_account.save()
         test_contact = Contact(first_name='sf_test', last_name='my', account=test_account)
@@ -465,7 +461,6 @@ class BasicSOQLRoTest(TestCase):
         User.objects.get(Username__iendswith=self.current_user[1:].upper())
         # Operators regex and iregex not tested because they are not supported.
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_bulk_create(self):
         """Create two Contacts by one request and find them.

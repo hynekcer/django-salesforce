@@ -17,6 +17,9 @@ from django.db.utils import DatabaseError
 import django.db.models.aggregates
 
 from salesforce import DJANGO_19_PLUS
+from salesforce.dbapi.exceptions import DatabaseError
+from django.db.transaction import TransactionManagementError
+import salesforce
 
 
 class SQLCompiler(compiler.SQLCompiler):
@@ -134,7 +137,6 @@ class SQLCompiler(compiler.SQLCompiler):
             # docstring of get_from_clause() for details.
             from_, f_params = self.get_from_clause()
 
-            import pdb; pdb.set_trace()
             if DJANGO_19_PLUS:
                 where, w_params = self.compile(self.where) if self.where is not None else ("", [])
                 having, h_params = self.compile(self.having) if self.having is not None else ("", [])
@@ -153,7 +155,7 @@ class SQLCompiler(compiler.SQLCompiler):
                 if alias:
                     # fixed by removing 'AS'
                     s_sql = '%s %s' % (s_sql, self.connection.ops.quote_name(alias))
-                elif with_col_aliases:
+                elif with_col_aliases and not isinstance(with_col_aliases, salesforce.backend.base.DatabaseWrapper):
                     s_sql = '%s AS %s' % (s_sql, 'Col%d' % col_idx)
                     col_idx += 1
                 if soql_trans and re.match(r'^\w+\.\w+$', s_sql):
@@ -219,8 +221,6 @@ class SQLCompiler(compiler.SQLCompiler):
                     raise DatabaseError('NOWAIT is not supported on this database backend.')
                 result.append(self.connection.ops.for_update_sql(nowait=nowait))
 
-            print(soql_trans)
-            print(result)
             return ' '.join(result), tuple(params)
         finally:
             # Finally do cleanup - get rid of the joins we created above.

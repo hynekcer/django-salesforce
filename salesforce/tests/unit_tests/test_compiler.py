@@ -105,7 +105,6 @@ class TestQueryCompiler(TestCase):
         self.assertRegexpMatches(sql,
                                  'SELECT .*OpportunityContactRole\.Role.* '
                                  'FROM OpportunityContactRole WHERE \(.* AND .*\)')
-        import pdb; pdb.set_trace()
         self.assertRegexpMatches(sql,
                                  'OpportunityContactRole.OpportunityId IN '
                                  '\(SELECT Opportunity\.Id (?:AS Col1 )?FROM Opportunity '
