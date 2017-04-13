@@ -1,6 +1,6 @@
 from unittest import TestCase
 from salesforce.backend.subselect import (
-    find_closing_parenthesis, split_subquery, transform_except_subselect as transform_except_subquery,
+    find_closing_parenthesis, split_subquery, transform_except_subquery,
     mark_quoted_strings, subst_quoted_strings, simplify_expression,
     QQuery)
 from salesforce.dbapi.exceptions import ProgrammingError

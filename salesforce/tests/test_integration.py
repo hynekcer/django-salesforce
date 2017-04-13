@@ -482,7 +482,7 @@ class BasicSOQLRoTest(TestCase):
         finally:
             account.delete()
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
+    @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_bulk_update(self):
         """Update two Contacts by one request.
         """
