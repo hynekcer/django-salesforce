@@ -16,10 +16,12 @@ from django.db.models import manager
 from django.db.utils import DEFAULT_DB_ALIAS
 
 from salesforce import router
+from salesforce import DJANGO_110_PLUS
 
 
 class SalesforceManager(manager.Manager):
-    use_for_related_fields = True
+    if not DJANGO_110_PLUS:
+        use_for_related_fields = True
 
     def get_queryset(self):
         """

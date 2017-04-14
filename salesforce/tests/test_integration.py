@@ -32,6 +32,7 @@ from salesforce.backend.test_helpers import (  # NOQA test decorators
 from salesforce.backend.test_helpers import (
     get_current_user, default_is_sf, sf_alias, uid_version as uid,
     QuietSalesforceErrors)
+from salesforce.tests.test_efficiency import LazyAssert
 
 import logging
 log = logging.getLogger(__name__)
@@ -142,19 +143,17 @@ class BasicSOQLRoTest(TestCase):
         test_account.save()
         test_contact = Contact(first_name='sf_test', last_name='my', account=test_account)
         test_contact.save()
-        req_count_0 = salesforce.dbapi.driver.request_count
+        lazy_assert = LazyAssert()
         try:
             contacts = list(Contact.objects.filter(account__Name='sf_test account').simple_select_related('account'))
-            req_count_1 = salesforce.dbapi.driver.request_count
+            lazy_assert.n_requests(2, 'filter by simple_related')
         finally:
             test_contact.delete()
             test_account.delete()
-        req_count_2 = salesforce.dbapi.driver.request_count
+        lazy_assert.sample()
         [x.account.Name for x in contacts]
-        req_count_3 = salesforce.dbapi.driver.request_count
-        self.assertEqual(req_count_1, req_count_0 + 2)
-        self.assertEqual(req_count_3, req_count_2)
         self.assertGreaterEqual(len(contacts), 1)
+        lazy_assert.n_requests(0, 'access to fimple_related', check=True)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_one_to_one_field(self):
@@ -470,15 +469,15 @@ class BasicSOQLRoTest(TestCase):
         try:
             objects = [Contact(last_name='sf_test a', account=account),
                        Contact(last_name='sf_test b', account=account)]
-            request_count_0 = salesforce.dbapi.driver.request_count
+            lazy_assert = LazyAssert()
 
             ret = Contact.objects.bulk_create(objects)
             _ = ret  # NOQA
 
             # TODO this didn't count SOAP, only cursor.urls_request()
-            request_count_1 = salesforce.dbapi.driver.request_count
-            self.assertEqual(request_count_1, request_count_0 + 1)
+            lazy_assert.n_requests(0, 'bulk_create 2 objects (created by SOAP)')
             self.assertEqual(len(Contact.objects.filter(account=account)), 2)
+            lazy_assert.check()
         finally:
             account.delete()
 
@@ -491,26 +490,28 @@ class BasicSOQLRoTest(TestCase):
         account_1.save()
         try:
             # check with 3 types of where conditions that the minimal necessary number of request
-            request_count_0 = salesforce.dbapi.driver.request_count
-            Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)  # REST
-            Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)  # SOAP
+            lazy_assert = LazyAssert()
+            Account.objects.filter(pk=account_0.pk).update(Name="test2" + uid)
+            lazy_assert.n_requests(1, 'bulk update 1 object by 1 REST')
+            Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)
+            # check that errors are reported
+            lazy_assert.n_requests(0, 'bulk update 1 object by 1 SOAP (invisible)')
             qs = Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid))
-            num_updated = qs.update(Name="test3" + uid)
+            lazy_assert.n_requests(0, 'still not run the filter')
+            num_updated = qs.update(Name="test3" + uid)  # +1
             # check the return value equals num updated
             self.assertEqual(num_updated, 2)
-            request_count_1 = salesforce.dbapi.driver.request_count
+            lazy_assert.n_requests(1, 'request by the more complicated filter')
             # check that they are really updated
             self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)  # REST + SOAP
-            # check the total number or requests for these 3 types
-            # of where condition: 1 + 1 + 2
+            lazy_assert.n_requests(1, 'request by the filter')
             # TODO this didn't count SOAP, only cursor.urls_request()
-            self.assertEqual(request_count_1, request_count_0 + 4)
-            # check that errors are reported
             self.assertRaises(DatabaseError, qs.update, OwnerId="x")
             # update to null
             Account.objects.filter(pk__in=[account_0.pk, account_1.pk]).update(Phone="987654321012")
             Account.objects.filter(pk__in=[account_0.pk, account_1.pk]).update(Phone=None)
             self.assertEqual(Account.objects.get(pk=account_0.pk).Phone, None)
+            lazy_assert.check()
         finally:
             account_0.delete()
             account_1.delete()
@@ -819,66 +820,63 @@ class BasicSOQLRoTest(TestCase):
     def test_only_fields(self):
         """Verify that access to "only" fields doesn't require a request, but others do.
         """
-        def assert_n_requests(n):
-            # verify the necessary number of requests
-            # print("-- req=%d (expect %d)" % (salesforce.dbapi.driver.request_count - request_count_0, n))
-            self.assertEqual(salesforce.dbapi.driver.request_count - request_count_0, n)
-
         # print([(x.id, x.last_name) for x in Contact.objects.only('last_name').order_by('id')[:2]])
-        request_count_0 = salesforce.dbapi.driver.request_count
         sql = User.objects.only('Username').query.get_compiler('salesforce').as_sql()[0]
         self.assertEqual(sql, 'SELECT User.Id, User.Username FROM User')
-        assert_n_requests(0)
 
-        user = User.objects.only('Username').order_by('pk')[0]                  # req
-        assert_n_requests(1)
+        lazy_assert = LazyAssert()
+        user = User.objects.only('Username').order_by('pk')[0]
+        lazy_assert.n_requests(1, 'get object with "only"')
 
         # Verify that deferred fields work
-        user.pk                                                                 # no request
+        user.pk
         user_username = user.Username
         self.assertIn('@', user_username)
-        assert_n_requests(1)
+        lazy_assert.n_requests(0, 'no request for fields in "only fields A"')
 
-        self.assertGreater(len(user.LastName), 0)                               # req
-        # import pdb; pdb.set_trace()
-        assert_n_requests(2)
+        self.assertGreater(len(user.LastName), 0)
+        lazy_assert.n_requests(1, 'one request for a field ouside "only"')
 
-        self.assertEqual(user_username, User.objects.get(pk=user.pk).Username)  # req
-        assert_n_requests(3)
+        self.assertEqual(user_username, User.objects.get(pk=user.pk).Username)
+        lazy_assert.n_requests(1, 'one request by verify the username')
 
-        xx = Contact.objects.only('last_name').order_by('pk')[0]                # req
-        assert_n_requests(4)
+        xx = Contact.objects.only('last_name').order_by('pk')[0]
+        lazy_assert.n_requests(1, 'one request by get with "only" fields B')
 
-        xx.last_name                                                            # no req
-        # print((xx.id, xx.last_name))
-        assert_n_requests(4)
+        xx.last_name
+        lazy_assert.n_requests(0, 'no request for fields in "only"')
 
         xy = Contact.objects.only('account').order_by('pk')[1]                  # req
-        assert_n_requests(5)
+        lazy_assert.n_requests(1, 'one request by get with "only" C foreign key')
 
         xy.account_id                                                           # no req
-        assert_n_requests(5)
+        lazy_assert.n_requests(0, 'no request for fields in "only" foreign key')
 
         # print((xy.id, xy.last_name))                                          # req
         # import pdb; pdb.set_trace()
         self.assertGreater(len(xy.last_name), 0)
-        assert_n_requests(6)
+        lazy_assert.n_requests(1, 'one request for a field ouside "only" C')
 
         xy.last_name                                                            # no req
-        assert_n_requests(6)                                                    # total 6 requests
+        lazy_assert.n_requests(0, 'no request for a releated ouside "only" C')
+        lazy_assert.check()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_defer_fields(self):
         """Verify that access to a deferred field requires a new request, but others don't.
         """
-        request_count_0 = salesforce.dbapi.driver.request_count
+        lazy_assert = LazyAssert()
+
         contact = Contact.objects.defer('email')[0]
-        self.assertEqual(salesforce.dbapi.driver.request_count, request_count_0 + 1)
+        lazy_assert.n_requests(1, 'one request by get with a "defer" field')
+
         _ = contact.last_name
-        self.assertEqual(salesforce.dbapi.driver.request_count, request_count_0 + 1)
+        lazy_assert.n_requests(0, 'no request by access to field outside "defer" fields')
+
         _ = contact.email
         _ = _  # NOQA
-        self.assertEqual(salesforce.dbapi.driver.request_count, request_count_0 + 2)
+        lazy_assert.n_requests(1, 'one request by access to field in "defer" fields')
+        lazy_assert.check()
 
     def test_incomplete_raw(self):
         qs = Contact.objects.raw("select id from Contact")
