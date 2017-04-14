@@ -145,8 +145,13 @@ class BasicSOQLRoTest(TestCase):
         test_contact.save()
         lazy_assert = LazyAssert()
         try:
-            contacts = list(Contact.objects.filter(account__Name='sf_test account').simple_select_related('account'))
+            qs = Contact.objects.filter(account__Name='sf_test account').simple_select_related('account')
+            contacts = list(qs)
             lazy_assert.n_requests(2, 'filter by simple_related')
+
+            [x.account.Name for x in contacts]
+            lazy_assert.n_requests(0, 'access to fimple_related', check=True)
+            self.assertGreaterEqual(len(contacts), 1)
         finally:
             test_contact.delete()
             test_account.delete()
@@ -820,7 +825,6 @@ class BasicSOQLRoTest(TestCase):
     def test_only_fields(self):
         """Verify that access to "only" fields doesn't require a request, but others do.
         """
-        # print([(x.id, x.last_name) for x in Contact.objects.only('last_name').order_by('id')[:2]])
         sql = User.objects.only('Username').query.get_compiler('salesforce').as_sql()[0]
         self.assertEqual(sql, 'SELECT User.Id, User.Username FROM User')
 
@@ -846,18 +850,16 @@ class BasicSOQLRoTest(TestCase):
         xx.last_name
         lazy_assert.n_requests(0, 'no request for fields in "only"')
 
-        xy = Contact.objects.only('account').order_by('pk')[1]                  # req
+        xy = Contact.objects.only('account').order_by('pk')[1]
         lazy_assert.n_requests(1, 'one request by get with "only" C foreign key')
 
-        xy.account_id                                                           # no req
+        xy.account_id
         lazy_assert.n_requests(0, 'no request for fields in "only" foreign key')
 
-        # print((xy.id, xy.last_name))                                          # req
-        # import pdb; pdb.set_trace()
         self.assertGreater(len(xy.last_name), 0)
         lazy_assert.n_requests(1, 'one request for a field ouside "only" C')
 
-        xy.last_name                                                            # no req
+        xy.last_name
         lazy_assert.n_requests(0, 'no request for a releated ouside "only" C')
         lazy_assert.check()
 
