@@ -115,6 +115,7 @@ class SalesforceQuerySet(query.QuerySet):
     """
     Use a custom SQL compiler to generate SOQL-compliant queries.
     """
+    # TODO can be removed
     def sf_iterator(self):
         """
         An iterator over the results from applying this QuerySet to the
