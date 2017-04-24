@@ -1,4 +1,4 @@
-from django.db import connections
+from django.db import connections, router
 from salesforce.dbapi.exceptions import InterfaceError
 import salesforce
 
@@ -37,4 +37,13 @@ def get_soap_client(db_alias, client_class=None):
     soap_client.useSession(access_token, auth_info.instance_url + url)
     return soap_client
 
-#
+
+def get_db_for_model(model, op_type=None):
+    if op_type in ('r', None):
+        db_for_read = router.db_for_read(model)
+    if op_type in ('w', None):
+        db_for_write = router.db_for_read(model)
+    if op_type is None and db_for_read != db_for_write:
+        raise InterfaceError("The database for read and write should be the same "
+                             "if the operation read or write is not specified")
+    return db_for_read if op_type != 'w' else db_for_write

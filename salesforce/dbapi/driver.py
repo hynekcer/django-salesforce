@@ -27,7 +27,7 @@ import pytz
 import requests
 
 from salesforce import models
-from salesforce.dbapi.soap import soap_enabled, get_soap_client
+from salesforce.dbapi.soap import soap_enabled, get_soap_client, get_db_for_model
 from salesforce.dbapi.exceptions import (
     Error, DatabaseError, DataError, IntegrityError,
     InterfaceError, InternalError, NotSupportedError,
@@ -352,7 +352,7 @@ class CursorWrapper(object):
             }
         else:
             # bulk by SOAP
-            svc = get_soap_client('salesforce')
+            svc = get_soap_client(get_db_for_model(query.model, 'w'))
             for x in post_data:
                 x.update({'type': table})
             ret = svc.create(post_data)
@@ -410,7 +410,7 @@ class CursorWrapper(object):
                     self.rowcount = len(_ret.json()['results'])
             else:
                 # bulk by SOAP
-                svc = get_soap_client('salesforce')
+                svc = get_soap_client(get_db_for_model(query.model, 'w'))
                 pk_iter = iter(pk)
                 ret_full = []
                 while True:
