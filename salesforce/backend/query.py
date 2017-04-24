@@ -190,3 +190,22 @@ class SalesforceQuerySet(query.QuerySet):
         obj = self._clone(klass=SalesforceQuerySet)
         obj.query.set_query_all()
         return obj
+
+    def simple_select_related(self, *fields):
+        """
+        Simplified "select_related" for Salesforce
+
+        Example:
+            for x in Contact.objects.filter(...).order_by('id')[10:20].simple_select_related('account'):
+                print(x.name, x.account.name)
+        restrictions: This must be the last method in the queryset method chain, after every other
+        method, after a possible slice etc. as you see above.
+        """
+        for rel_field in fields:
+            rel_model = self.model._meta.get_field(rel_field).related_model
+            rel_attr = self.model._meta.get_field(rel_field).attname
+            rel_qs = rel_model.objects.filter(pk__in=self.values_list(rel_attr, flat=True))
+            fk_map = {x.pk: x for x in rel_qs}
+            for x in self:
+                setattr(x, '_{}_cache'.format(rel_field), fk_map[getattr(x, rel_attr)])
+        return self
