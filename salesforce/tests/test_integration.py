@@ -493,6 +493,8 @@ class BasicSOQLRoTest(TestCase):
         account_0, account_1 = [Account(Name='test' + uid), Account(Name='test' + uid)]
         account_0.save()
         account_1.save()
+        contact_0 = Contact.objects.create(last_name='sf_test-' + uid, account=account_0)
+        contact_1 = Contact.objects.create(last_name='sf_test-' + uid, account=account_1)
         try:
             # check with 3 types of where conditions that the minimal necessary number of request
             lazy_assert = LazyAssert()
@@ -501,14 +503,14 @@ class BasicSOQLRoTest(TestCase):
             Account.objects.filter(pk__in=[account_1.pk]).update(Name="test2" + uid)
             # check that errors are reported
             lazy_assert.n_requests(0, 'bulk update 1 object by 1 SOAP (invisible)')
-            qs = Account.objects.filter(pk__in=Account.objects.filter(Name='test2' + uid))
+            qs = Contact.objects.filter(account__in=Account.objects.filter(Name='test2' + uid))
             lazy_assert.n_requests(0, 'still not run the filter')
-            num_updated = qs.update(Name="test3" + uid)  # +1
+            num_updated = qs.update(first_name="test3" + uid)  # +1
             # check the return value equals num updated
             self.assertEqual(num_updated, 2)
             lazy_assert.n_requests(1, 'request by the more complicated filter')
             # check that they are really updated
-            self.assertEqual(Account.objects.filter(Name='test3' + uid).count(), 2)  # REST + SOAP
+            self.assertEqual(Contact.objects.filter(first_name='test3' + uid).count(), 2)  # REST + SOAP
             lazy_assert.n_requests(1, 'request by the filter')
             # TODO this didn't count SOAP, only cursor.urls_request()
             self.assertRaises(DatabaseError, qs.update, OwnerId="x")
@@ -518,6 +520,8 @@ class BasicSOQLRoTest(TestCase):
             self.assertEqual(Account.objects.get(pk=account_0.pk).Phone, None)
             lazy_assert.check()
         finally:
+            contact_0.delete()
+            contact_1.delete()
             account_0.delete()
             account_1.delete()
 

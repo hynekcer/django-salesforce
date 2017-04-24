@@ -369,20 +369,21 @@ class CursorWrapper(object):
         table = query.model._meta.db_table
         # this will break in multi-row updates
         assert (len(query.where.children) == 1 and
-                query.where.children[0].lookup_name in ('exact', 'in') and
-                query.where.children[0].lhs.target.column == 'Id')
+                query.where.children[0].lookup_name in ('exact', 'in'))  # and
+                # query.where.children[0].lhs.target.column == 'Id')
         pk = query.where.children[0].rhs
         if isinstance(pk, salesforce.backend.sql_query.SalesforceQuery):
             subquery = pk
-            pk = salesforce.backend.query.SalesforceQuerySet(subquery.model, query=subquery, using=self.db)
-        assert pk, "Nothing to update"
+            pk = salesforce.backend.query.SalesforceQuerySet(subquery.model, query=subquery, using=self.db.alias)
         headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)
         log.debug('UPDATE %s(%s)%s' % (table, pk, post_data))
         if isinstance(pk, (tuple, list, salesforce.backend.query.SalesforceQuerySet)):
             if not self.use_soap_for_bulk:
                 # bulk by REST
-                if len(pk) > BULK_BATCH_SIZE:
+                len_pk = len(pk)
+                assert len_pk > 0, "Nothing to update"
+                if len_pk > BULK_BATCH_SIZE:
                     raise OperationalError("Bulk operations like queryset update with more than "
                                            "%d items require Beatbox - SOAP API" % BULK_BATCH_SIZE)
                 url = rest_api_url(self.session, 'composite/batch')
@@ -430,6 +431,7 @@ class CursorWrapper(object):
                     return ret_full
         else:
             # single request
+            assert pk, "Nothing to update"
             url = rest_api_url(self.session, 'sobjects', table, pk)
             _ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data),
                                          _cursor=self)

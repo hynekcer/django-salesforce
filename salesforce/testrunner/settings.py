@@ -193,3 +193,4 @@ try:
     from salesforce.testrunner.local_settings import *  # NOQA
 except ImportError:
     pass
+LOGGING['loggers']['salesforce']['level'] = 'DEBUG'

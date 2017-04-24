@@ -20,8 +20,9 @@ from salesforce import DJANGO_110_PLUS
 
 
 class SalesforceManager(manager.Manager):
-    if not DJANGO_110_PLUS:
+    if True or not DJANGO_110_PLUS:  #
         use_for_related_fields = True
+        silence_use_for_related_fields_deprecation = True
 
     def get_queryset(self):
         """

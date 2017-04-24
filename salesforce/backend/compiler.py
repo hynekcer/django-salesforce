@@ -17,8 +17,6 @@ from django.db.utils import DatabaseError
 import django.db.models.aggregates
 
 from salesforce import DJANGO_19_PLUS
-from salesforce.dbapi.exceptions import DatabaseError
-from django.db.transaction import TransactionManagementError
 import salesforce
 
 
@@ -321,6 +319,12 @@ class SalesforceWhereNode(where.WhereNode):
         # A match-everything node is different than empty node (which also
         # technically matches everything) for backwards compatibility reasons.
         # Refs #5261.
+
+        if not isinstance(qn, SQLCompiler):
+            # future fix for DJANGO_20_PLUS, when deprecated "use_for_related_fields"
+            # removed from managers,
+            # "str(<UpdateQuery...>)" or "<UpdateQuery...>.get_compiler('default').as_sql()"
+            return super(SalesforceWhereNode, self).as_sql(qn, connection)
 
         soql_trans = qn.query_topology()
         result = []
