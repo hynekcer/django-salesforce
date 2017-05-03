@@ -90,7 +90,7 @@ class QQuery(object):
                         expr_alias_counter += 1
                     assert '&' not in field, "Subquery not expected as field in aggregation query"
                 elif '&' in field:
-                    assert field == '(&)'
+                    assert field == '(&)' or re.match(r'\(&\) [A-Za-z][A-Za-z0-9_]*$', field)
                     subquery = QQuery(self.subqueries[consumed_subqueries][0])
                     consumed_subqueries += 1
                     self.has_child_rel_field = True
