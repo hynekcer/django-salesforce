@@ -6,7 +6,7 @@
 #
 
 """
-Django models for accessing Salesforce objects.
+Django models for accessing Salesforce objects. (like django.db.models)
 
 The Salesforce database is somewhat un-UNIXy or non-Pythonic, in that
 column names are all in CamelCase. No attempt is made to work around this

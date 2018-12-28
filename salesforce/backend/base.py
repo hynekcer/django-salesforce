@@ -6,7 +6,7 @@
 #
 
 """
-Salesforce database backend for Django.
+Salesforce database backend for Django.  (like django,db.backends.*.base)
 """
 
 import requests
@@ -16,21 +16,20 @@ import threading
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from django.db.backends.base.base import BaseDatabaseWrapper
-from django.db.backends.base.features import BaseDatabaseFeatures
 from requests.adapters import HTTPAdapter
 
 from salesforce.auth import SalesforcePasswordAuth
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.client import DatabaseClient
 from salesforce.backend.creation import DatabaseCreation
+from salesforce.backend.features import DatabaseFeatures
 from salesforce.backend.validation import DatabaseValidation
 from salesforce.backend.operations import DatabaseOperations
 from salesforce.backend.introspection import DatabaseIntrospection
 from salesforce.backend.schema import DatabaseSchemaEditor
 # from django.db.backends.signals import connection_created
-from salesforce.dbapi import driver as Database, get_max_retries
-from salesforce.dbapi import driver
-from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError, beatbox  # NOQA - TODO
+from salesforce.dbapi import get_max_retries, driver as Database
+from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
 
 try:
     from urllib.parse import urlparse
@@ -40,30 +39,6 @@ except ImportError:
 __all__ = ('DatabaseWrapper', 'DatabaseError', 'SalesforceError',)
 
 connect_lock = threading.Lock()
-
-
-class DatabaseFeatures(BaseDatabaseFeatures):
-    """
-    Features this database provides.
-    """
-    allows_group_by_pk = True
-    supports_unspecified_pk = False
-    can_return_id_from_insert = True
-    can_return_ids_from_bulk_insert = driver.beatbox is not None
-    has_bulk_insert = True
-    # TODO If the following would be True, it requires a good relation name resolution
-    supports_select_related = False
-    # Though Salesforce doesn't support transactions, the setting
-    # `supports_transactions` is used only for switching between rollback or
-    # cleaning the database in testrunner after every test and loading fixtures
-    # before it, however SF does not support any of these and all test data must
-    # be loaded and cleaned by the testcase code. From the viewpoint of SF it is
-    # irrelevant, but due to issue #28 (slow unit tests) it should be True.
-    supports_transactions = True
-
-    # Never use `interprets_empty_strings_as_nulls=True`. It is an opposite
-    # setting for Oracle, while Salesforce saves nulls as empty strings not vice
-    # versa.
 
 
 class DatabaseWrapper(BaseDatabaseWrapper):

@@ -6,7 +6,7 @@
 #
 
 """
-Automatic table creation is not supported by the Salesforce backend.
+Automatic table creation is not supported by the Salesforce backend. (like django.db.backends.*.creation)
 """
 from django.db.backends.base.creation import BaseDatabaseCreation
 

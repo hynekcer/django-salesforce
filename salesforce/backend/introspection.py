@@ -6,7 +6,7 @@
 #
 
 """
-Salesforce introspection code.
+Salesforce introspection code.  (like django.db.backends.*.introspection)
 """
 
 import logging

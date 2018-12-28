@@ -6,7 +6,7 @@
 #
 
 """
-Salesforce object query and queryset customizations.
+Salesforce object query and queryset customizations.  (like django.db.models.query)
 """
 # TODO hynekcer: class CursorWrapper should
 #      be moved to salesforce.dbapi.driver at the next big refactoring
@@ -25,13 +25,13 @@ from django.conf import settings
 from django.core.serializers import python
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connections
-from django.db.models import query, Count
-from django.db.models.sql import Query, RawQuery, constants, subqueries
+from django.db.models import query
+from django.db.models.sql import subqueries
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.utils.six import PY3, text_type
 
 from salesforce import models
-from salesforce.backend import DJANGO_20_PLUS
+from salesforce.backend import DJANGO_20_PLUS, models_sql_query
 from salesforce.backend.compiler import SQLCompiler
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.dbapi.driver import handle_api_exceptions, DatabaseError
@@ -348,69 +348,6 @@ class SalesforceQuerySet(query.QuerySet):
         return self
 
 
-class SalesforceRawQuery(RawQuery):
-    def clone(self, using):
-        return SalesforceRawQuery(self.sql, using, params=self.params)
-
-    def get_columns(self):
-        if self.cursor is None:
-            self._execute_query()
-        converter = connections[self.using].introspection.table_name_converter
-        if self.cursor.rowcount > 0:
-            return [converter(col) for col in self.cursor.first_row.keys() if col != 'attributes']
-        # TODO hy: A more general fix is desirable with rewriting more code.
-        return ['Id']  # originally [SF_PK] before Django 1.8.4
-
-    def _execute_query(self):
-        self.cursor = CursorWrapper(connections[self.using], self)
-        self.cursor.execute(self.sql, self.params)
-
-    def __repr__(self):
-        return "<SalesforceRawQuery: %s; %r>" % (self.sql, tuple(self.params))
-
-    def __iter__(self):
-        for row in super(SalesforceRawQuery, self).__iter__():
-            yield [row[k] for k in self.get_columns()]
-
-
-class SalesforceQuery(Query):
-    """
-    Override aggregates.
-    """
-    def __init__(self, *args, **kwargs):
-        super(SalesforceQuery, self).__init__(*args, **kwargs)
-        self.is_query_all = False
-        self.first_chunk_len = None
-        self.max_depth = 1
-
-    def clone(self, klass=None, memo=None, **kwargs):
-        if DJANGO_20_PLUS:
-            query = Query.clone(self)
-        else:
-            query = Query.clone(self, klass, memo, **kwargs)
-        query.is_query_all = self.is_query_all
-        return query
-
-    def has_results(self, using):
-        q = self.clone()
-        compiler = q.get_compiler(using=using)
-        return bool(compiler.execute_sql(constants.SINGLE))
-
-    def set_query_all(self):
-        self.is_query_all = True
-
-    def get_count(self, using):
-        """
-        Performs a COUNT() query using the current filter constraints.
-        """
-        obj = self.clone()
-        obj.add_annotation(Count('pk'), alias='x_sf_count', is_summary=True)
-        number = obj.get_aggregation(using, ['x_sf_count'])['x_sf_count']
-        if number is None:
-            number = 0
-        return number
-
-
 class CursorWrapper(object):
     """
     A wrapper that emulates the behavior of a database cursor.
@@ -453,10 +390,10 @@ class CursorWrapper(object):
         Send a query to the Salesforce API.
         """
         self.rowcount = None
-        if isinstance(self.query, SalesforceQuery) or self.query is None:
+        if isinstance(self.query, models_sql_query.SalesforceQuery) or self.query is None:
             response = self.execute_select(q, args)
             # print("response : %s" % response.text)
-        elif isinstance(self.query, SalesforceRawQuery):
+        elif isinstance(self.query, models_sql_query.SalesforceRawQuery):
             response = self.execute_select(q, args)
         elif isinstance(self.query, subqueries.InsertQuery):
             response = self.execute_insert(self.query)
@@ -583,14 +520,14 @@ class CursorWrapper(object):
                     assert isinstance(pks, text_type)
                     return [pks]
                 else:  # lookup_name 'in'
-                    assert isinstance(pks, (tuple, list, SalesforceQuerySet, SalesforceQuery))
+                    assert isinstance(pks, (tuple, list, SalesforceQuerySet, models_sql_query.SalesforceQuery))
                     assert not child.bilateral_transforms
                     if isinstance(pks, (tuple, list)):
                         return pks
                     elif isinstance(pks, SalesforceQuerySet):
                         # a SalesforceQuerySet is used only for Django 1.10
                         return [x.pk for x in pks]
-                    elif isinstance(pks, SalesforceQuery):
+                    elif isinstance(pks, models_sql_query.SalesforceQuery):
                         # # alternative solution:
                         # return list(salesforce.backend.query.SalesforceQuerySet(pk.model, query=pk, using=pk._db))
 

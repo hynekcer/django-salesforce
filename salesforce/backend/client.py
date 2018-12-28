@@ -6,7 +6,7 @@
 #
 
 """
-TODO: command-line SOQL interface.
+(empty) Module for command-line dbshell  (like django.db.backends.*.client)
 """
 
 from django.core.exceptions import ImproperlyConfigured

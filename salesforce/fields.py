@@ -6,7 +6,7 @@
 #
 
 """
-Adds support for Salesforce primary keys.
+Customized fields for Salesforce, especially the primary key. (like django.db.models.fields)
 """
 
 import warnings

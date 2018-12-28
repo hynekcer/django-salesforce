@@ -6,7 +6,7 @@
 #
 
 """
-Aggregates like COUNT(), MAX(), MIN() are customized here.
+OBSOLETED Aggregates like COUNT(); prefer patch as_salesforce  (like django.db.models.aggregates)
 """
 from django.db.models.aggregates import *  # NOQA
 from django.db.models.aggregates import Aggregate
@@ -23,4 +23,4 @@ class Count(Aggregate):
     def __init__(self, col, distinct=False, **extra):
         if(col == '*'):
             col = ''
-        super(Count, self).__init__(col, distinct=distinct and 'DISTINCT ' or '', **extra)
+        super(Count, self).__init__(col, distinct='DISTINCT ' if distinct else '', **extra)

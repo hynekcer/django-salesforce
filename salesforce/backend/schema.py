@@ -1,5 +1,5 @@
 """
-Minimal code to support makemigrations also in Django 1.10+
+Minimal code to support ignored makemigrations  (like django.db.backends.*.schema)
 
 without interaction to SF (without migrate)
 """
