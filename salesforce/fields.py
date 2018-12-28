@@ -20,7 +20,6 @@ from django.db import models
 from django.utils.encoding import smart_text
 from django.utils.six import string_types
 
-from salesforce import DJANGO_19_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
 
 # None of field types defined in this module need a "deconstruct" method,
@@ -240,25 +239,20 @@ class TimeField(SfField, models.TimeField):
 
 class ForeignKey(SfField, models.ForeignKey):
     """ForeignKey with sf_read_only attribute and acceptable by Salesforce."""
-    def __init__(self, *args, **kwargs):
+    def __init__(self, to, on_delete, *args, **kwargs):
         # Checks parameters before call to ancestor.
-        if DJANGO_19_PLUS and args[1:2]:
-            on_delete = args[1].__name__
-        else:
-            on_delete = kwargs.get('on_delete', models.CASCADE).__name__
-        if on_delete not in ('PROTECT', 'DO_NOTHING'):
+        if on_delete.__name__ not in ('PROTECT', 'DO_NOTHING'):
             # The option CASCADE (currently fails) would be unsafe after a fix
             # of on_delete because Cascade delete is not usually enabled in SF
             # for safety reasons for most fields objects, namely for Owner,
             # CreatedBy etc. Some related objects are deleted automatically
             # by SF even with DO_NOTHING in Django, e.g. for
             # Campaign/CampaignMember
-            related_object = args[0]
             warnings.warn(
                 "Only foreign keys with on_delete = PROTECT or "
                 "DO_NOTHING are currently supported, not %s related to %s"
-                % (on_delete, related_object))
-        super(ForeignKey, self).__init__(*args, **kwargs)
+                % (on_delete, to))
+        super(ForeignKey, self).__init__(to, on_delete, *args, **kwargs)
 
     def get_attname(self):
         if self.name.islower():

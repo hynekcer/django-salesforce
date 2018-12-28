@@ -206,23 +206,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         last_introspected_model = table2model(table_name)
         return result
 
-    def get_indexes(self, cursor, table_name):
-        """
-        DEPRECATED
-        Returns a dictionary of fieldname -> infodict for the given table,
-        where each infodict is in the format:
-            {'primary_key': boolean representing whether it's the primary key,
-             'unique': boolean representing whether it's a unique index}
-        """
-        result = {}
-        for field in self.table_description_cache(table_name)['fields']:
-            if field['type'] == 'id' or field['unique']:
-                result[field['name']] = dict(
-                        primary_key=(field['type'] == 'id'),
-                        unique=field['unique']
-                        )
-        return result
-
     def get_constraints(self, cursor, table_name):
         """
         Retrieves any constraints or keys (unique, pk, fk, check, index)

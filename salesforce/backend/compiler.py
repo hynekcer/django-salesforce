@@ -15,7 +15,6 @@ from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.transaction import TransactionManagementError
 import django.db.models.aggregates
 
-from salesforce import DJANGO_19_PLUS
 from salesforce.backend.driver import DatabaseError
 import salesforce
 
@@ -25,23 +24,6 @@ class SQLCompiler(compiler.SQLCompiler):
     A subclass of the default SQL compiler for the SOQL dialect.
     """
     soql_trans = None
-
-    def get_columns(self, with_aliases=False):
-        """
-        Remove table names and strip quotes from column names.
-        """
-        soql_trans = self.query_topology()
-        cols, col_params = compiler.SQLCompiler.get_columns(self, with_aliases)
-        out = []
-        for col in cols:
-            if soql_trans and re.match(r'^\w+\.\w+$', col):
-                tab_name, col_name = col.split('.')
-                out.append('%s.%s' % (soql_trans[tab_name], col_name))
-            else:
-                out.append(col)
-        cols = out
-        result = [x.replace(' AS ', ' ') for x in cols]
-        return (result, col_params)
 
     def get_from_clause(self):
         """
@@ -119,9 +101,8 @@ class SQLCompiler(compiler.SQLCompiler):
         # However we do not want to get rid of stuff done in pre_sql_setup(),
         # as the pre_sql_setup will modify query state in a way that forbids
         # another run of it.
-        if DJANGO_19_PLUS:
-            if with_limits and self.query.low_mark == self.query.high_mark:
-                return '', ()
+        if with_limits and self.query.low_mark == self.query.high_mark:
+            return '', ()
         self.subquery = subquery
         refcounts_before = self.query.alias_refcount.copy()
         soql_trans = self.query_topology()
@@ -135,12 +116,8 @@ class SQLCompiler(compiler.SQLCompiler):
             # docstring of get_from_clause() for details.
             from_, f_params = self.get_from_clause()
 
-            if DJANGO_19_PLUS:
-                where, w_params = self.compile(self.where) if self.where is not None else ("", [])
-                having, h_params = self.compile(self.having) if self.having is not None else ("", [])
-            else:
-                where, w_params = self.compile(self.query.where)
-                having, h_params = self.compile(self.query.having)
+            where, w_params = self.compile(self.where) if self.where is not None else ("", [])
+            having, h_params = self.compile(self.having) if self.having is not None else ("", [])
             params = []
             result = ['SELECT']
 

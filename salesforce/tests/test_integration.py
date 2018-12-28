@@ -17,7 +17,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 import salesforce
-from salesforce import router, DJANGO_110_PLUS, DJANGO_20_PLUS
+from salesforce import router, DJANGO_20_PLUS
 from salesforce.backend.test_helpers import (  # NOQA test decorators
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (
@@ -794,7 +794,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
     #    list(Contact.objects.raw("select Count() from Contact"))
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_110_PLUS)
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_only_fields(self):
         """Verify that access to "only" fields doesn't require a request, but others do.
         """
@@ -839,7 +839,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         self.lazy_check()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_110_PLUS)
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_defer_fields(self):
         """Verify that access to a deferred field requires a new request, but others don't.
         """
@@ -852,7 +852,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         self.lazy_check()
         _  # NOQA
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_110_PLUS)
+    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_incomplete_raw(self):
         last_name = Contact.objects.raw("select id from Contact")[0].last_name
         self.assertGreater(len(last_name), 0)

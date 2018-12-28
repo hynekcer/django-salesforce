@@ -10,7 +10,6 @@ import itertools
 import django.db.backends.utils
 from django.utils.deconstruct import deconstructible
 
-from salesforce import DJANGO_19_PLUS
 import salesforce.backend.driver
 
 from django.db.backends.base.operations import BaseDatabaseOperations
@@ -79,13 +78,8 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     # This SQL is not important because we control the db from the compiler
     # but something must exist
-    if DJANGO_19_PLUS:
-        def bulk_insert_sql(self, fields, placeholder_rows):
-            return "VALUES " + ", ".join(itertools.chain(*placeholder_rows))
-    else:
-        def bulk_insert_sql(self, fields, num_values):
-            items_sql = "(%s)" % ", ".join(["%s"] * len(fields))
-            return "VALUES " + ", ".join([items_sql] * num_values)
+    def bulk_insert_sql(self, fields, placeholder_rows):
+        return "VALUES " + ", ".join(itertools.chain(*placeholder_rows))
 
     def return_insert_id(self):
         return "", ()

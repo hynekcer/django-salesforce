@@ -30,28 +30,17 @@ from django.db.models.sql import Query, RawQuery, constants, subqueries
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.utils.six import PY3, text_type
 
-from salesforce import models, DJANGO_19_PLUS, DJANGO_110_PLUS, DJANGO_20_PLUS
+from salesforce import models, DJANGO_20_PLUS
 from salesforce.backend.driver import DatabaseError, handle_api_exceptions
 from salesforce.backend.compiler import SQLCompiler
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
 import salesforce.backend.driver
 
-if not DJANGO_110_PLUS:
-    from django.db.models.query_utils import deferred_class_factory
-
 try:
     from urllib.parse import urlencode
 except ImportError:
     from urllib import urlencode
-
-if DJANGO_19_PLUS:
-    from django.db.models.query import BaseIterable
-else:
-    class BaseIterable(object):
-        def __init__(self, queryset, chunked_fetch=False):
-            self.queryset = queryset
-            self.chunked_fetch = chunked_fetch
 
 log = logging.getLogger(__name__)
 
@@ -231,7 +220,7 @@ class SalesforceRawQuerySet(query.RawQuerySet):
         return self.query.cursor.rowcount
 
 
-class SalesforceModelIterable(BaseIterable):
+class SalesforceModelIterable(query.BaseIterable):
     """
     Iterable that yields a model instance for each row.
     """
@@ -279,10 +268,7 @@ class SalesforceModelIterable(BaseIterable):
                     skip.add(field.attname)
                 else:
                     init_list.append(field.name)
-            if DJANGO_110_PLUS:
-                model_cls = queryset.model
-            else:
-                model_cls = deferred_class_factory(queryset.model, skip)
+            model_cls = queryset.model
 
         field_names = queryset.query.get_loaded_field_names()
         _ = field_names  # NOQA
@@ -298,7 +284,7 @@ class SalesforceModelIterable(BaseIterable):
             # This object came from the database; it's not being added.
             res.object._state.adding = False
 
-            if DJANGO_110_PLUS and init_list is not None and len(init_list) != len(model_cls._meta.concrete_fields):
+            if init_list is not None and len(init_list) != len(model_cls._meta.concrete_fields):
                 raise NotImplementedError("methods defer() and only() are not implemented for Django 1.10 yet")
 
             yield res.object
@@ -537,7 +523,7 @@ class CursorWrapper(object):
             # Nothing queried about django_migrations to SFDC and immediately responded that
             # nothing about migration status is recorded in SFDC.
             #
-            # That is required by "makemigrations" in Django 1.10+ to accept this query.
+            # That is required by "makemigrations" to accept this query.
             # Empty results are possible.
             # (It could be eventually replaced by: "SELECT app__c, Name FROM django_migrations__c")
             self.results = iter([])

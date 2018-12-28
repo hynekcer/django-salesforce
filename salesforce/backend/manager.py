@@ -15,15 +15,13 @@ from django.conf import settings
 from django.db.models import manager
 from django.db.utils import DEFAULT_DB_ALIAS
 
-from salesforce import router, DJANGO_110_PLUS, DJANGO_20_PLUS
+from salesforce import router, DJANGO_20_PLUS
 
 
 class SalesforceManager(manager.Manager):
     if not DJANGO_20_PLUS:
         use_for_related_fields = True
-        if DJANGO_110_PLUS:
-            # silence because this deprecation can be solved after removing Django 1.8
-            silence_use_for_related_fields_deprecation = True
+        silence_use_for_related_fields_deprecation = True
 
     def get_queryset(self):
         """

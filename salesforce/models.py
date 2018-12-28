@@ -24,6 +24,7 @@ from django.db.models import PROTECT, DO_NOTHING  # NOQA
 # from django.db.models import CASCADE, PROTECT, SET_NULL, SET, DO_NOTHING
 from django.utils.six import with_metaclass
 
+from salesforce import DJANGO_20_PLUS
 from salesforce.backend import manager
 from salesforce.fields import SalesforceAutoField, SF_PK, SfField, ForeignKey
 from salesforce.fields import DEFAULTED_ON_CREATE, NOT_UPDATEABLE, NOT_CREATEABLE, READ_ONLY
@@ -82,6 +83,8 @@ class SalesforceModel(with_metaclass(SalesforceModelBase, models.Model)):
     class Meta:
         abstract = True
         base_manager_name = 'objects'
+        if not DJANGO_20_PLUS:
+            manager_inheritance_from_future = True
 
     # Name of primary key 'Id' can be easily changed to 'id'
     # by "settings.SF_PK='id'".
