@@ -17,7 +17,7 @@ import salesforce.fields
 
 from django.db.backends.base.introspection import BaseDatabaseIntrospection
 
-from salesforce.backend import query
+from salesforce.backend import utils
 
 # require "simplejson" to ensure that it is available to "requests" hook.
 import simplejson  # NOQA
@@ -85,7 +85,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     @property
     def table_list_cache(self):
         if self._table_list_cache is None:
-            url = query.rest_api_url(self.connection.sf_session, 'sobjects')
+            url = utils.rest_api_url(self.connection.sf_session, 'sobjects')
             log.debug('Request API URL: %s' % url)
             response = driver.handle_api_exceptions(url, self.connection.sf_session.get)
             # charset is detected from headers by requests package
@@ -98,7 +98,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def table_description_cache(self, table):
         if table not in self._table_description_cache:
-            url = query.rest_api_url(self.connection.sf_session, 'sobjects', table, 'describe/')
+            url = utils.rest_api_url(self.connection.sf_session, 'sobjects', table, 'describe/')
             log.debug('Request API URL: %s' % url)
             response = driver.handle_api_exceptions(url, self.connection.sf_session.get)
             self._table_description_cache[table] = response.json(object_pairs_hook=OrderedDict)
