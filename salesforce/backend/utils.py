@@ -235,23 +235,11 @@ class CursorWrapper(object):
         """
         Send a query to the Salesforce API.
         """
-        from salesforce.backend import models_sql_query
         self.rowcount = None
-        if isinstance(self.query, models_sql_query.SalesforceQuery) or self.query is None:
-            response = self.execute_select(q, args)
-            # print("response : %s" % response.text)
-        elif isinstance(self.query, models_sql_query.SalesforceRawQuery):
-            response = self.execute_select(q, args)
-        elif isinstance(self.query, subqueries.InsertQuery):
-            response = self.execute_insert(self.query)
-        elif isinstance(self.query, subqueries.UpdateQuery):
-            response = self.execute_update(self.query)
-        elif isinstance(self.query, subqueries.DeleteQuery):
-            response = self.execute_delete(self.query)
-        elif q == MIGRATIONS_QUERY_TO_BE_IGNORED:
+        if self.query is None:
             response = self.execute_select(q, args)
         else:
-            raise DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
+            response = self.execute_django(q, args)
 
         if response and isinstance(response, list):
             # bulk operation SOAP
@@ -295,6 +283,28 @@ class CursorWrapper(object):
                 self.results = self.query_results(data)
         else:
             self.results = iter([])
+
+    def execute_django(self, q, args=()):
+        """
+        Fixed execute for queries coming from Django query compilers
+        """
+        from salesforce.backend import models_sql_query
+        if isinstance(self.query, subqueries.InsertQuery):
+            response = self.execute_insert(self.query)
+        elif isinstance(self.query, subqueries.UpdateQuery):
+            response = self.execute_update(self.query)
+        elif isinstance(self.query, subqueries.DeleteQuery):
+            response = self.execute_delete(self.query)
+        elif isinstance(self.query, models_sql_query.SalesforceQuery):
+            response = self.execute_select(q, args)
+            # print("response : %s" % response.text)
+        elif isinstance(self.query, models_sql_query.SalesforceRawQuery):
+            response = self.execute_select(q, args)
+        elif q == MIGRATIONS_QUERY_TO_BE_IGNORED:
+            response = self.execute_select(q, args)
+        else:
+            raise DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
+        return response
 
     def execute_select(self, q, args):
         processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
