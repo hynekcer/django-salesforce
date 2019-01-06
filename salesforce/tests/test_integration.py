@@ -18,7 +18,7 @@ from django.utils import timezone
 
 import salesforce
 from salesforce import router
-from salesforce.backend import DJANGO_20_PLUS
+from salesforce.backend import DJANGO_20_PLUS, DJANGO_22_PLUS
 from salesforce.backend.test_helpers import (  # NOQA test decorators
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (
@@ -58,6 +58,8 @@ def refresh(obj):
 
 class BasicSOQLRoTest(TestCase, LazyTestMixin):
     """Tests that need no setUp/tearDown"""
+
+    databases = '__all__'
 
     @classmethod
     def setUpClass(cls):
@@ -1050,6 +1052,7 @@ class BasicLeadSOQLTest(TestCase):
         self.assertEqual(test_lead.FirstName, 'John')
         self.assertEqual(test_lead.Company, company_orig)
 
+    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_22_PLUS)
     def test_query_all_deleted(self):
         """Test query for deleted objects (queryAll resource).
         """
