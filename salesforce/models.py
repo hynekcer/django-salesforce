@@ -14,6 +14,7 @@ issue, but normal use of `db_column` and `db_table` parameters should work.
 """
 
 from __future__ import unicode_literals
+from inspect import isclass
 import logging
 import warnings
 
@@ -28,6 +29,7 @@ from salesforce.backend import manager, DJANGO_20_PLUS
 from salesforce.fields import SalesforceAutoField, SF_PK, SfField, ForeignKey
 from salesforce.fields import DEFAULTED_ON_CREATE, NOT_UPDATEABLE, NOT_CREATEABLE, READ_ONLY
 from salesforce.fields import *  # NOQA - imports for other modules
+from salesforce.backend.indep import LazyField
 
 __all__ = ('SalesforceModel', 'Model', 'DEFAULTED_ON_CREATE', 'PROTECT', 'DO_NOTHING', 'SF_PK', 'SfField',
            'NOT_UPDATEABLE', 'NOT_CREATEABLE', 'READ_ONLY')
@@ -91,15 +93,18 @@ class SalesforceModel(with_metaclass(SalesforceModelBase, models.Model)):
                              verbose_name='ID', auto_created=True)
 
 
+class ModelTemplate(object):
+    Meta = SalesforceModel.Meta
+
+
 def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
     """Add some Salesforce fields from a pattern_module models.py
 
     Parameters:
         pattern_module:  Module where to search additional fields settings.
-           It should be a models.py created by introspection (inspectdb)
-           and should be a dummy app that is in INSTALLED_APPS. (That
-           models.py is probably not a part of version control for you and
-           is archived by an other way because the diff are huge. )
+           It is an imported module created by introspection (inspectdb),
+           usually named `models_template.py`. (You will probably not add it
+           to version control for you because the diffs are frequent and huge.)
         dynamic_field_patterns:  List of regular expression for Salesforce
             field names that should be included automatically into the model.
         attrs:  Input/Output dictionary of model attributes. (no need to
@@ -134,6 +139,7 @@ def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
     if not db_table:
         raise RuntimeError('The "db_table" must be set in Meta if "dynamic_field_patterns" is used.')
     is_custom_model = getattr(attr_meta, 'custom', False)
+
     patterns = []
     for pat in dynamic_field_patterns:
         enabled = True
@@ -141,6 +147,7 @@ def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
             enabled = False
             pat = pat[1:]
         patterns.append((enabled, re.compile(r'^(?:{})$'.format(pat), re.I)))
+
     used_columns = []
     for name, attr in attrs.items():
         if isinstance(attr, SfField):
@@ -151,58 +158,42 @@ def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
                 field.name = name
             attname, column = field.get_attname_column()
             used_columns.append(column)
-    if pattern_module:
-        for name, obj in vars(pattern_module).items():
-            if not name.startswith('_'):
-                if isinstance(obj, SalesforceModelBase) and getattr(obj._meta, 'db_table', None) == db_table:
-                    cls = obj
-                    break
+
+    if not pattern_module:
+        raise RuntimeError("a pattern_module is required for dynamic fields.")
+    for name, obj in vars(pattern_module).items():
+        if not name.startswith('_') and isclass(obj) and issubclass(obj, ModelTemplate):
+            default_table = obj.__name__
+            if getattr(getattr(obj, 'Meta', None), 'db_table', default_table) == db_table:
+                cls = obj
+                break
+    else:
+        # not found db_table model, but decide between warning or exception
+        if all(x.startswith('__') for x in dir(pattern_module)):
+            warnings.warn("The module '%s' is empty. (It is OK if you are "
+                          "rewriting new Models by pipe from inspectdb command.)"
+                          % pattern_module.__name__)
+            return
         else:
-            # not found db_table model, but decide between warning or exception
-            if all(x.startswith('__') for x in dir(pattern_module)):
-                warnings.warn("The module '%s' is empty. (It is OK if you are "
-                              "rewriting new Models by pipe from inspectdb command.)"
-                              % pattern_module.__name__)
-                return
-            else:
-                raise RuntimeError("No Model for table '%s' found in the module '%s'"
-                                   % (db_table, pattern_module.__name__))
-    for field in cls._meta.fields:
-        if not field.primary_key:
-            attname, column = field.get_attname_column()
-            for enabled, pat in patterns:
-                if pat.match(column):
-                    break
-            else:
-                enabled = False
-            if enabled:
-                if not isinstance(field, ForeignKey):
-                    new_field = type(field)()
-                    vars(new_field).update(vars(field))
-                else:
-                    # copy ForeignKey with target app changed to the current one
-                    kw = {k: v for k, v in vars(field).items() if k in (
-                        # universal options
-                        'null', 'blank', 'choices', 'db_column', 'db_index', 'db_tablespace',
-                        'default', 'editable', 'error_messages', 'help_text', 'primary_key', 'unique',
-                        'unique_for_date', 'unique_for_month', 'unique_for_year', 'verbose_name',
-                        'validators'
-                        # foreign key options
-                        'db_constraint', 'swappable',
-                        # salesforce
-                        'sf_read_only',
-                    )}
-                    remote = field.remote_field
-                    new_field = type(field)(
-                        remote.model._meta.object_name,
-                        on_delete=remote.on_delete,
-                        to_field=remote.field_name,
-                        related_name=remote.related_name,
-                        related_query_name=remote.related_query_name,
-                        custom=field.sf_custom,  # salesforce option
-                        # ?? 'limit_choices_to', 'sf_namespace',
-                        **kw)
-                attrs[field.name] = new_field
+            raise RuntimeError("No Model for table '%s' found in the module '%s'"
+                               % (db_table, pattern_module.__name__))
+    lazy_fields = [(name, obj) for name, obj in vars(cls).items()
+                   if isinstance(obj, LazyField) and issubclass(obj.klass, SfField)
+                   ]
+    for name, obj in sorted(lazy_fields, key=lambda name_obj: name_obj[1].counter):
+        for enabled, pat in patterns:
+            if pat.match(name):
+                break
+        else:
+            enabled = False
+        if enabled:
+            if issubclass(obj.klass, ForeignKey):
+                to = obj.kw['to']
+                if isclass(to) and issubclass(to, ModelTemplate):
+                    obj.kw['to'] = to.__name__
+            field = obj.create()
+            attrs[name] = field
+    assert pattern_module  # maybe rarely locked while running inspectdb
 
 
 Model = SalesforceModel

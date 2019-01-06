@@ -331,7 +331,7 @@ class Organization(models.Model):
         # Copy all fields that match the patters for Force.com field name
         # from the class that use the same db_table "Organization" in the
         # module models_template
-        dynamic_field_patterns = models_template, ['CreatedById', 'Last.*Id']
+        dynamic_field_patterns = models_template, ['created_by', 'last.*by']
 
 
 class Test(SalesforceParentModel):
