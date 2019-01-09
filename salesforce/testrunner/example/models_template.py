@@ -13,7 +13,6 @@ class User(models.Model):
     Email = models.CharField(max_length=100)
     LastName = models.CharField(max_length=80)
     FirstName = models.CharField(max_length=40)
-    IsActive = models.BooleanField(default=False)
 
 
 class Organization(models.Model):

@@ -952,10 +952,10 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         alias = getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')
         self.assertEqual(Contact.objects.using(None)._db, alias)
 
-    @skipUnless(hasattr(models_template, 'Organization'), "Skipped because models_template.Organization doesn't exist")
     def test_dynamic_fields(self):
         """Test that fields can be copied dynamically from other model"""
-        self.assertGreater(Organization.objects.get().created_by.Username, '')
+        self.assertTrue(models_template)
+        self.assertIn('@', Organization.objects.get().created_by.Username)
 
 # ============= Tests that need setUp Lead ==================
 

@@ -310,7 +310,7 @@ class OpportunityContactRole(SalesforceModel):
 
 
 try:
-    import salesforce.testrunner.dynamic_models.models as models_template
+    from salesforce.testrunner.example import models_template
 except ImportError:
     # this is useful for the case that the model is being rewritten by inspectdb
     models_template = None
@@ -331,7 +331,8 @@ class Organization(models.Model):
         # Copy all fields that match the patters for Force.com field name
         # from the class that use the same db_table "Organization" in the
         # module models_template
-        dynamic_field_patterns = models_template, ['created_by', 'last.*by']
+        if models_template:
+            dynamic_field_patterns = models_template, ['created_by', 'last.*_by']
 
 
 class Test(SalesforceParentModel):

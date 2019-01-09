@@ -126,7 +126,6 @@ INSTALLED_APPS = (
     'django.contrib.admindocs',
     'salesforce',
     'salesforce.testrunner.example',
-    'salesforce.testrunner.dynamic_models',
 )
 
 SALESFORCE_DB_ALIAS = 'salesforce'
