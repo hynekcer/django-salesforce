@@ -4,8 +4,7 @@ from contextlib import contextmanager
 from functools import wraps
 from unittest import expectedFailure
 
-from django.db import connections
-from salesforce.backend import driver
+from salesforce.dbapi import connections, driver
 
 
 def expectedFailureIf(condition):

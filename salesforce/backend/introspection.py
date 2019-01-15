@@ -12,7 +12,7 @@ Salesforce introspection code.
 import logging
 import re
 
-from salesforce.backend import driver
+from salesforce.dbapi import driver
 import salesforce.fields
 
 from django.db.backends.base.introspection import BaseDatabaseIntrospection

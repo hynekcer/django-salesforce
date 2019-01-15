@@ -9,8 +9,10 @@ Code at lower level than DB API should be also here.
 import requests
 import socket
 
-from django.conf import settings
-from django.utils.six import PY3
+from salesforce.dbapi import settings  # i.e. django.conf.settings
+from salesforce.dbapi.exceptions import (  # NOQA
+    Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
+    InternalError, ProgrammingError, NotSupportedError, SalesforceError)
 
 try:
     import beatbox
@@ -29,63 +31,6 @@ paramstyle = 'format'
 API_STUB = '/services/data/v35.0'
 
 request_count = 0  # global counter
-
-# All error types described in DB API 2 are implemented the same way as in
-# Django 1.8, otherwise some exceptions are not correctly reported in it.
-
-
-
-class Error(Exception if PY3 else StandardError):  # NOQA: StandardError undefined on PY3
-    pass
-
-
-class InterfaceError(Error):
-    pass
-
-
-class DatabaseError(Error):
-    pass
-
-
-class DataError(DatabaseError):
-    pass
-
-
-class OperationalError(DatabaseError):
-    pass
-
-
-class IntegrityError(DatabaseError):
-    pass
-
-
-class InternalError(DatabaseError):
-    pass
-
-
-class ProgrammingError(DatabaseError):
-    pass
-
-
-class NotSupportedError(DatabaseError):
-    pass
-
-
-class SalesforceError(DatabaseError):
-    """
-    DatabaseError that usually gets detailed error information from SF response
-
-    in the second parameter, decoded from REST, that frequently need not to be
-    displayed.
-    """
-    def __init__(self, message='', data=None, response=None, verbose=False):
-        DatabaseError.__init__(self, message)
-        self.data = data
-        self.response = response
-        self.verbose = verbose
-        if verbose:
-            log.info("Error (debug details) %s\n%s", response.text,
-                     response.__dict__)
 
 
 class Connection(object):

@@ -15,22 +15,23 @@ import threading
 
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
+from django.db.backends.base.base import BaseDatabaseWrapper
+from django.db.backends.base.features import BaseDatabaseFeatures
 from requests.adapters import HTTPAdapter
 
 from salesforce.auth import SalesforcePasswordAuth
+from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.client import DatabaseClient
 from salesforce.backend.creation import DatabaseCreation
 from salesforce.backend.validation import DatabaseValidation
 from salesforce.backend.operations import DatabaseOperations
 from salesforce.backend.introspection import DatabaseIntrospection
 from salesforce.backend.schema import DatabaseSchemaEditor
-from salesforce.backend.driver import IntegrityError, DatabaseError, SalesforceError, beatbox  # NOQA - TODO
-from salesforce.backend import driver as Database, get_max_retries
 # from django.db.backends.signals import connection_created
-from salesforce import DJANGO_111_PLUS
+from salesforce.dbapi import driver as Database, get_max_retries
+from salesforce.dbapi import driver
+from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError, beatbox  # NOQA - TODO
 
-from django.db.backends.base.base import BaseDatabaseWrapper
-from django.db.backends.base.features import BaseDatabaseFeatures
 try:
     from urllib.parse import urlparse
 except ImportError:
@@ -48,7 +49,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     allows_group_by_pk = True
     supports_unspecified_pk = False
     can_return_id_from_insert = True
-    can_return_ids_from_bulk_insert = beatbox is not None
+    can_return_ids_from_bulk_insert = driver.beatbox is not None
     has_bulk_insert = True
     # TODO If the following would be True, it requires a good relation name resolution
     supports_select_related = False

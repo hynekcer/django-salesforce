@@ -17,7 +17,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 import salesforce
-from salesforce import router, DJANGO_20_PLUS
+from salesforce import router
+from salesforce.backend import DJANGO_20_PLUS
 from salesforce.backend.test_helpers import (  # NOQA test decorators
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (

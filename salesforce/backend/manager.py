@@ -15,7 +15,8 @@ from django.conf import settings
 from django.db.models import manager
 from django.db.utils import DEFAULT_DB_ALIAS
 
-from salesforce import router, DJANGO_20_PLUS
+from salesforce import router
+from salesforce.backend import DJANGO_20_PLUS
 
 
 class SalesforceManager(manager.Manager):

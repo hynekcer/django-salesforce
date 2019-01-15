@@ -12,7 +12,7 @@ conversion).
 """
 
 from django.db import connections
-from .backend.driver import DatabaseError, InterfaceError
+from salesforce.dbapi.driver import DatabaseError, InterfaceError
 import salesforce
 
 try:

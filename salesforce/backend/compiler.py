@@ -15,7 +15,7 @@ from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.transaction import TransactionManagementError
 import django.db.models.aggregates
 
-from salesforce.backend.driver import DatabaseError
+from salesforce.dbapi.driver import DatabaseError
 import salesforce
 
 
