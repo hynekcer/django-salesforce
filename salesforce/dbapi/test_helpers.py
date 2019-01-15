@@ -22,11 +22,11 @@ class QuietSalesforceErrors(object):
 
     def __enter__(self):
         if hasattr(self.connection, 'debug_silent'):
-            self.save_debug_silent = self.connection.debug_silent
+            self.save_debug_silent = self.connection.debug_silent  # pylint:disable=attribute-defined-outside-init
             self.connection.debug_silent = True
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, exc_tb):
         try:
             self.connection.debug_silent = self.save_debug_silent
         except AttributeError:

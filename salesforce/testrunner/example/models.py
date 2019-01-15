@@ -6,12 +6,14 @@
 #
 
 from __future__ import absolute_import, unicode_literals
-from salesforce import models
-from salesforce.models import SalesforceModel as SalesforceModelParent
 
 import django
 from django.conf import settings
 from django.utils.encoding import python_2_unicode_compatible
+
+from salesforce import models
+from salesforce.models import SalesforceModel as SalesforceModelParent
+
 
 SALUTATIONS = [
     'Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'
@@ -84,7 +86,7 @@ class AbstractAccount(SalesforceModel):
         abstract = True
 
     def __str__(self):
-        return self.Name
+        return self.Name  # pylint: disable=no-member
 
 
 class CoreAccount(AbstractAccount):
@@ -110,10 +112,10 @@ class PersonAccount(AbstractAccount):
 
 
 if getattr(settings, 'PERSON_ACCOUNT_ACTIVATED', False):
-    class Account(PersonAccount):
+    class Account(PersonAccount):  # pylint:disable=model-no-explicit-unicode
         pass
 else:
-    class Account(CoreAccount):
+    class Account(CoreAccount):    # pylint:disable=model-no-explicit-unicode
         pass
 
 

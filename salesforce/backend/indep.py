@@ -21,8 +21,7 @@ class LazyField(object):
         assert not self.called
         obj = type(self)(self.klass)
         # check valid args and check duplicite
-        kw = getcallargs(self.klass.__init__, self, *args, **kwargs)
-
+        kw = getcallargs(self.klass.__init__, self, *args, **kwargs)  # pylint:disable=deprecated-method
         del kw['self']
         obj.args = kw.pop('args', ())
         kw.update(kw.pop('kwargs', {}))

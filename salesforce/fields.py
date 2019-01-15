@@ -15,7 +15,7 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import ugettext_lazy as _
 from django.db.models import fields
-from django.db.models import PROTECT, DO_NOTHING  # NOQA
+from django.db.models import PROTECT, DO_NOTHING  # NOQA pylint:disable=unused-import
 from django.db import models
 from django.utils.encoding import smart_text
 from django.utils.six import string_types
@@ -67,6 +67,7 @@ class SalesforceAutoField(fields.AutoField):
                 "SalesforceAutoField must be a primary key"
                 "with the name '%s' (configurable by settings)." % SF_PK)
         if cls._meta.auto_field:
+            # pylint:disable=unidiomatic-typecheck
             if (type(self) == type(cls._meta.auto_field) and self.model._meta.abstract and  # NOQA type eq
                     cls._meta.auto_field.name == SF_PK):
                 # A model is created  that inherits fields from more abstract classes
@@ -142,6 +143,8 @@ class SfField(models.Field):
         if self.sf_custom and '__' in cls._meta.db_table[:-3]:
             self.sf_namespace = cls._meta.db_table.split('__')[0] + '__'
         self.set_attributes_from_name(name)
+
+# pylint:disable=unnecessary-pass,too-many-ancestors
 
 
 class CharField(SfField, models.CharField):

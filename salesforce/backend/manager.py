@@ -22,7 +22,7 @@ from salesforce.backend import DJANGO_20_PLUS
 class SalesforceManager(manager.Manager):
     if not DJANGO_20_PLUS:
         use_for_related_fields = True
-        silence_use_for_related_fields_deprecation = True
+        silence_use_for_related_fields_deprecation = True  # pylint:disable=invalid-name  # name from Django
 
     def get_queryset(self):
         """

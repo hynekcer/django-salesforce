@@ -18,6 +18,8 @@ from salesforce.dbapi.driver import DatabaseError
 from salesforce.backend.models_lookups import IsNull
 import salesforce
 
+# pylint:too-many-branches,too-many-locals
+
 
 class SQLCompiler(compiler.SQLCompiler):
     """
@@ -88,7 +90,9 @@ class SQLCompiler(compiler.SQLCompiler):
             return list(result)
         return result
 
-    def as_sql(self, with_limits=True, with_col_aliases=False, subquery=False):
+    def as_sql(self, with_limits=True, with_col_aliases=False, subquery=False):  # pylint:disable=arguments-differ
+        # the argument `subquery` is only for old Django 1.10
+        # pylint:disable=too-many-locals,too-many-branches,too-many-statements
         """
         Creates the SQL for this query. Returns the SQL string and list of
         parameters.
@@ -202,6 +206,7 @@ class SQLCompiler(compiler.SQLCompiler):
             self.query.reset_refcounts(refcounts_before)
 
     def query_topology(self, _alias_map_items=None):
+        # pylint:disable=too-many-locals,too-many-branches
         # SOQL for SFDC requires:
         # - multiple (N-1) relations between (N) tables are possible
         # - exactly one top controlling table
@@ -283,7 +288,8 @@ class SalesforceWhereNode(where.WhereNode):
     # TODO compare, how much it is updated to 1.7
     # TODO though there is no problem, update to Django 1.8 - 1.10!
     # patched "django.db.models.sql.where.WhereNode.as_sql" from Django 1.5, 1.6., 1.7
-    def as_sql(self, qn, connection):
+    def as_sql(self, qn, connection):  # pylint:disable=arguments-differ
+        # pylint:disable=too-many-locals,too-many-branches
         """
         Returns the SQL version of the where clause and the value to be
         substituted in. Returns '', [] if this node matches everything,

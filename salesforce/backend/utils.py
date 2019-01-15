@@ -5,12 +5,14 @@ import datetime
 import decimal
 import json
 import logging
-import pytz
 from itertools import islice
+
+import pytz
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models.sql import subqueries
 from django.utils.six import PY3, text_type
+
 from salesforce import models
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
@@ -25,6 +27,7 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
+# pylint:disable=invalid-name
 
 # Values of seconds are with 3 decimal places in SF, but they are rounded to
 # whole seconds for the most of fields.
@@ -63,9 +66,9 @@ def arg_to_soql(arg):
     """
     Perform necessary SOQL quoting on the arg.
     """
-    if(isinstance(arg, models.SalesforceModel)):
+    if isinstance(arg, models.SalesforceModel):
         return sql_conversions[models.SalesforceModel](arg)
-    if(isinstance(arg, decimal.Decimal)):
+    if isinstance(arg, decimal.Decimal):
         return sql_conversions[decimal.Decimal](arg)
     return sql_conversions.get(type(arg), sql_conversions[str])(arg)
 
@@ -74,9 +77,9 @@ def arg_to_sf(arg):
     """
     Perform necessary JSON conversion on the arg.
     """
-    if(isinstance(arg, models.SalesforceModel)):
+    if isinstance(arg, models.SalesforceModel):
         return json_conversions[models.SalesforceModel](arg)
-    if(isinstance(arg, decimal.Decimal)):
+    if isinstance(arg, decimal.Decimal):
         return json_conversions[decimal.Decimal](arg)
     return json_conversions.get(type(arg), json_conversions[str])(arg)
 
@@ -93,9 +96,8 @@ def prep_for_deserialize_inner(model, record, init_list=None):
                 # Normal fields
                 field_val = record[x.column]
                 # db_type = x.db_type(connection=connections[using])
-                if(x.__class__.__name__ == 'DateTimeField' and field_val is not None):
+                if x.__class__.__name__ == 'DateTimeField' and field_val is not None:
                     d = datetime.datetime.strptime(field_val, SALESFORCE_DATETIME_FORMAT)
-                    import pytz
                     d = d.replace(tzinfo=pytz.utc)
                     if settings.USE_TZ:
                         fields[x.name] = d.strftime(DJANGO_DATETIME_FORMAT)
@@ -108,14 +110,14 @@ def prep_for_deserialize_inner(model, record, init_list=None):
     return fields
 
 
-def prep_for_deserialize(model, record, using, init_list=None):
+def prep_for_deserialize(model, record, using, init_list=None):  # pylint:disable=unused-argument
     """
     Convert a record from SFDC (decoded JSON) to dict(model string, pk, fields)
     If fixes fields of some types. If names of required fields `init_list `are
     specified, then only these fields are processed.
     """
     # TODO the parameter 'using' is not currently important.
-    attribs = record.pop('attributes')  # NOQA unused
+    attribs = record.pop('attributes')  # NOQA pylint:disable=unused-variable
 
     mod = model.__module__.split('.')
     if hasattr(model._meta, 'app_label'):
@@ -163,16 +165,15 @@ def extract_values(query):
 def extract_values_inner(row, query):
     d = dict()
     fields = query.model._meta.fields
-    for index in range(len(fields)):
-        field = fields[index]
+    for index, field in enumerate(fields):
         sf_read_only = getattr(field, 'sf_read_only', 0)
         if (
-            field.get_internal_type() == 'AutoField' or
-            isinstance(query, subqueries.UpdateQuery) and (sf_read_only & NOT_UPDATEABLE) != 0 or
-            isinstance(query, subqueries.InsertQuery) and (sf_read_only & NOT_CREATEABLE) != 0
+                field.get_internal_type() == 'AutoField' or
+                isinstance(query, subqueries.UpdateQuery) and (sf_read_only & NOT_UPDATEABLE) != 0 or
+                isinstance(query, subqueries.InsertQuery) and (sf_read_only & NOT_CREATEABLE) != 0
         ):
             continue
-        if(isinstance(query, subqueries.UpdateQuery)):
+        if isinstance(query, subqueries.UpdateQuery):
             # update
             value_or_empty = [value for qfield, model, value in query.values if qfield.name == field.name]
             if value_or_empty:
@@ -224,7 +225,7 @@ class CursorWrapper(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
     @property
@@ -235,6 +236,7 @@ class CursorWrapper(object):
         """
         Send a query to the Salesforce API.
         """
+        # pylint:disable=too-many-branches
         self.rowcount = None
         if self.query is None:
             response = self.execute_select(q, args)
@@ -246,14 +248,14 @@ class CursorWrapper(object):
             if all(x['success'] for x in response):
                 self.lastrowid = [item['id'] for item in response]
         # the encoding is detected automatically, e.g. from headers
-        elif(response and response.text):
+        elif response and response.text:
             # parse_float set to decimal.Decimal to avoid precision errors when
             # converting from the json number to a float and then to a Decimal object
             # on a model's DecimalField. This converts from json number directly
             # to a Decimal object
             data = response.json(parse_float=decimal.Decimal)
             # a SELECT query
-            if('totalSize' in data):
+            if 'totalSize' in data:
                 self.rowcount = data['totalSize']
             # a successful INSERT query, return after getting PK
             elif('success' in data and 'id' in data):
@@ -446,7 +448,7 @@ class CursorWrapper(object):
         table = query.model._meta.db_table
         pk = self.get_pks_from_query(query)
 
-        log.debug('DELETE %s(%s)' % (table, pk))
+        log.debug('DELETE %s(%s)', table, pk)
         if not pk:
             self.rowcount = 0
             return
@@ -465,11 +467,11 @@ class CursorWrapper(object):
                     {
                         'method': 'DELETE',
                         'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
-                                       salesforce.API_VERSION, table, x),
+                            salesforce.API_VERSION, table, x),
                         'referenceId': x,
-                     } for x in pk
-                 ]
-             }
+                    } for x in pk
+                ]
+            }
             ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
                                         _cursor=self)
             self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
@@ -589,8 +591,8 @@ json_conversions = {
     models.SalesforceModel: sobj_id,
 }
 if not PY3:
-    if False:
-        long, unicode = long, unicode  # NOQA - static analysis for Python 2
+    if False:                          # pylint:disable=using-constant-test  # fix static analysis for Python 2
+        long, unicode = long, unicode  # NOQA pylint:disable=used-before-assignment
 
     json_conversions[long] = str
 

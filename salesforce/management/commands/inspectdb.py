@@ -27,9 +27,9 @@ def fix_field_params_repr(params):
             out = []
             for x0, x1 in self:
                 out.append('(%s, %s)' % (
-                           repr(ReprUnicode(x0) if isinstance(x0, text_type) else x0),
-                           repr(ReprUnicode(x1) if isinstance(x1, text_type) else x1)
-                           ))
+                    repr(ReprUnicode(x0) if isinstance(x0, text_type) else x0),
+                    repr(ReprUnicode(x1) if isinstance(x1, text_type) else x1)
+                ))
             return '[%s]' % (', '.join(out))
     if PY3:
         return params
@@ -75,8 +75,8 @@ class Command(InspectDBCommand):
     def handle(self, **options):
         if isinstance(options['table_name_filter'], str):
             options['table_name_filter'] = re.compile(options['table_name_filter']).match
-        self.verbosity = int(options['verbosity'])
-        self.connection = connections[options['database']]
+        self.verbosity = int(options['verbosity'])          # pylint:disable=attribute-defined-outside-init
+        self.connection = connections[options['database']]  # pylint:disable=attribute-defined-outside-init
         if self.connection.vendor == 'salesforce':
             if not PY3:
                 self.stdout.write("# coding: utf-8\n")
@@ -88,10 +88,11 @@ class Command(InspectDBCommand):
         else:
             super(Command, self).handle(**options)
 
-    def get_field_type(self, connection, table_name, row):
+    def get_field_type(self, connection, table_name, row):  # pylint:disable=too-many-locals
         field_type, field_params, field_notes = (super(Command, self)
                                                  .get_field_type(connection, table_name, row))
         if connection.vendor == 'salesforce':
+            # pylint:disable=unused-variable
             name, type_code, display_size, internal_size, precision, scale, null_ok, sf_params = row
             if 'ref_comment' in sf_params:
                 field_notes.append(sf_params.pop('ref_comment'))

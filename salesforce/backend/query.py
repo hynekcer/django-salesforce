@@ -8,10 +8,6 @@
 """
 Salesforce object query and queryset customizations.  (like django.db.models.query)
 """
-# TODO hynekcer: class CursorWrapper should
-#      be moved to salesforce.dbapi.driver at the next big refactoring
-#      (Evenso some low level internals of salesforce.auth should be moved to
-#      salesforce.dbapi.driver.Connection)
 
 from __future__ import print_function
 
@@ -25,6 +21,7 @@ from salesforce.backend.utils import CursorWrapper, prep_for_deserialize
 from salesforce.backend.compiler import SQLCompiler
 
 
+# pylint:disable=too-few-public-methods
 class SalesforceRawQuerySet(query.RawQuerySet):
     def __len__(self):
         if self.query.cursor is None:
@@ -39,11 +36,12 @@ class SalesforceModelIterable(query.BaseIterable):
     """
 
     def __iter__(self):
-        queryset = self.queryset
         """
         An iterator over the results from applying this QuerySet to the
         remote web service.
         """
+        # pylint:disable=protected-access,too-many-locals
+        queryset = self.queryset
         try:
             sql, params = SQLCompiler(queryset.query, connections[queryset.db], None).as_sql()
         except EmptyResultSet:
@@ -128,7 +126,7 @@ class SalesforceQuerySet(query.QuerySet):
         if DJANGO_20_PLUS:
             obj = self._clone()
         else:
-            obj = self._clone(klass=SalesforceQuerySet)
+            obj = self._clone(klass=SalesforceQuerySet)  # pylint: disable=unexpected-keyword-arg
         obj.query.set_query_all()
         return obj
 

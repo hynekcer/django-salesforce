@@ -173,7 +173,7 @@ class SalesforcePasswordAuth(SalesforceAuth):
         settings_dict = self.settings_dict
         url = ''.join([settings_dict['HOST'], '/services/oauth2/token'])
 
-        log.info("attempting authentication to %s" % settings_dict['HOST'])
+        log.info("attempting authentication to %s", settings_dict['HOST'])
         self._session.mount(settings_dict['HOST'], HTTPAdapter(max_retries=get_max_retries()))
         auth_params = {
             'grant_type':    'password',
@@ -197,7 +197,7 @@ class SalesforcePasswordAuth(SalesforceAuth):
                 )
             ).decode('ascii')
             if calc_signature == response_data['signature']:
-                log.info("successfully authenticated %s" % settings_dict['USER'])
+                log.info("successfully authenticated %s", settings_dict['USER'])
             else:
                 raise IntegrityError('Invalid auth signature received')
         else:

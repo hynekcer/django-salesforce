@@ -21,14 +21,14 @@ import warnings
 from django.db import models
 from django.db.models.base import ModelBase
 # Only these two `on_delete` options are currently supported
-from django.db.models import PROTECT, DO_NOTHING  # NOQA
+from django.db.models import PROTECT, DO_NOTHING  # NOQA pylint:disable=unused-wildcard-import,wildcard-import
 # from django.db.models import CASCADE, PROTECT, SET_NULL, SET, DO_NOTHING
 from django.utils.six import with_metaclass
 
 from salesforce.backend import manager, DJANGO_20_PLUS
 from salesforce.fields import SalesforceAutoField, SF_PK, SfField, ForeignKey
 from salesforce.fields import DEFAULTED_ON_CREATE, NOT_UPDATEABLE, NOT_CREATEABLE, READ_ONLY
-from salesforce.fields import *  # NOQA - imports for other modules
+from salesforce.fields import *  # NOQA pylint:disable=unused-wildcard-import,wildcard-import
 from salesforce.backend.indep import LazyField
 
 __all__ = ('SalesforceModel', 'Model', 'DEFAULTED_ON_CREATE', 'PROTECT', 'DO_NOTHING', 'SF_PK', 'SfField',
@@ -57,27 +57,30 @@ class SalesforceModelBase(ModelBase):
         return result
 
     def add_to_class(cls, name, value):
+        # pylint:disable=protected-access
         if name == '_meta':
             sf_custom = False
             if hasattr(value.meta, 'custom'):
                 sf_custom = value.meta.custom
                 delattr(value.meta, 'custom')
-            super(SalesforceModelBase, cls).add_to_class(name, value)
+            super(SalesforceModelBase, cls).add_to_class(name, value)  # pylint: disable=no-value-for-parameter
             setattr(cls._meta, 'sf_custom', sf_custom)
         else:
-            if type(value) is models.manager.Manager:
+            if type(value) is models.manager.Manager:  # pylint:disable=unidiomatic-typecheck
                 # this is for better migrations because: obj._constructor_args = (args, kwargs)
                 _constructor_args = value._constructor_args
                 value = manager.SalesforceManager()
                 value._constructor_args = _constructor_args
 
-            super(SalesforceModelBase, cls).add_to_class(name, value)
+            super(SalesforceModelBase, cls).add_to_class(name, value)  # pylint: disable=no-value-for-parameter
 
 
+# pylint:disable=too-few-public-methods
 class SalesforceModel(with_metaclass(SalesforceModelBase, models.Model)):
     """
     Abstract model class for Salesforce objects.
     """
+    # pylint:disable=invalid-name
     _salesforce_object = True
     objects = manager.SalesforceManager()
 
@@ -133,6 +136,7 @@ def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
             db_table = 'Contact'
             dynamic_patterns = exported.models, ['Last', '.*Date$']
     """
+    # pylint:disable=invalid-name,too-many-branches,too-many-locals
     import re
     attr_meta = attrs['Meta']
     db_table = getattr(attr_meta, 'db_table', None)
@@ -156,7 +160,7 @@ def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
                 field.sf_custom = True
             if not field.name:
                 field.name = name
-            attname, column = field.get_attname_column()
+            attname, column = field.get_attname_column()  # pylint:disable=unused-variable
             used_columns.append(column)
 
     if not pattern_module:

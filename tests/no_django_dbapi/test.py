@@ -1,5 +1,6 @@
 import unittest
 import requests
+from salesforce import auth
 import salesforce.testrunner.settings
 
 sf_alias = 'salesforce'
@@ -12,21 +13,19 @@ class Test(unittest.TestCase):
         self.assertRaises(ImportError, __import__, 'django.core')
 
     def test_auth_standard(self):
-        import salesforce.auth
-        salesforce.auth.SalesforcePasswordAuth(sf_alias, settings_dict=settings_dict)
+        auth.SalesforcePasswordAuth(sf_alias, settings_dict=settings_dict)
 
 
 class OAuthTest(unittest.TestCase):
 
     def validate_oauth(self, d):
         for key in ('access_token', 'id', 'instance_url', 'issued_at', 'signature'):
-            if(key not in d):
+            if key not in d:
                 self.fail("Missing %s key in returned oauth data." % key)
-            elif(not d[key]):
+            elif not d[key]:
                 self.fail("Empty value for %s key in returned oauth data." % key)
 
     def test_token_renewal(self):
-        from salesforce import auth
         # _session=salesforce.backend.fake.base.FakeAuthSession()
         # _session.bind('default')
         _session = requests.Session()

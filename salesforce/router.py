@@ -29,6 +29,7 @@ class ModelRouter(object):
     """
     Database router for Salesforce models.
     """
+    # pylint:disable=protected-access
     @property
     def sf_alias(self):
         return getattr(settings, 'SALESFORCE_DB_ALIAS', 'salesforce')

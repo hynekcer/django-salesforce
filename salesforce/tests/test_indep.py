@@ -3,6 +3,8 @@ from salesforce.backend.indep import LazyField
 
 
 class MyField(object):
+    # pylint:disable=invalid-name,too-few-public-methods
+
     def __init__(self, a=None, **kwargs):
         self.kwargs = kwargs
         self.a = a

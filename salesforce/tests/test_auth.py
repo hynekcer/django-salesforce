@@ -25,9 +25,9 @@ class OAuthTest(TestCase):
 
     def validate_oauth(self, d):
         for key in ('access_token', 'id', 'instance_url', 'issued_at', 'signature'):
-            if(key not in d):
+            if key not in d:
                 self.fail("Missing %s key in returned oauth data." % key)
-            elif(not d[key]):
+            elif not d[key]:
                 self.fail("Empty value for %s key in returned oauth data." % key)
 
     def test_token_renewal(self):

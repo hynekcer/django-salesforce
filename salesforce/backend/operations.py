@@ -21,6 +21,14 @@ Default database operations, with unquoted names.
 
 
 class DatabaseOperations(BaseDatabaseOperations):
+    # undefined abstract methods:
+    #       date_extract_sql, date_interval_sql,     date_trunc_sql,  datetime_cast_date_sql
+    #   datetime_extract_sql,                    datetime_trunc_sql,
+    #                                                time_trunc_sql,  datetime_cast_time_sql;
+    #   no_limit_value,   regex_lookup
+    #
+    # pylint:disable=abstract-method,no-self-use,unused-argument
+
     compiler_module = "salesforce.backend.compiler"
 
     def connection_init(self):
@@ -102,5 +110,6 @@ class DefaultedOnCreate(object):
                 default=models.DefaultedOnCreate(),
                 db_column='OwnerId')
     """
+    # pylint:disable=too-few-public-methods
     def __str__(self):
         return 'DEFAULTED_ON_CREATE'

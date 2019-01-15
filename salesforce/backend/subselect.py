@@ -82,7 +82,7 @@ class TestSubSelectSearch(TestCase):
         self.assertRaises(AssertionError, find_closing_parenthesis, '() (() (())) ()', 1)
 
     def test_subselect(self):
-        def func(sql):
+        def func(sql):  # pylint:disable=unused-argument
             return '*transformed*'
 
         sql = "SELECT a, (SELECT x FROM y) FROM b WHERE (c IN (SELECT p FROM q WHERE r = %s) AND c = %s)"
@@ -90,7 +90,7 @@ class TestSubSelectSearch(TestCase):
         self.assertEqual(transform_except_subselect(sql, func), expected)
 
     def test_nested_subselect(self):
-        def func(sql):
+        def func(sql):  # pylint:disable=unused-argument
             return '*transformed*'
 
         sql = "SELECT a, (SELECT x, (SELECT p FROM q) FROM y) FROM b"

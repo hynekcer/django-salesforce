@@ -44,17 +44,17 @@ class SalesforceQuery(Query):
         self.first_chunk_len = None
         self.max_depth = 1
 
-    def clone(self, klass=None, memo=None, **kwargs):
+    def clone(self, klass=None, memo=None):  # pylint: disable=arguments-differ
         if DJANGO_20_PLUS:
             query = Query.clone(self)
         else:
-            query = Query.clone(self, klass, memo, **kwargs)
+            query = Query.clone(self, klass, memo)  # pylint: disable=too-many-function-args
         query.is_query_all = self.is_query_all
         return query
 
     def has_results(self, using):
         q = self.clone()
-        compiler = q.get_compiler(using=using)
+        compiler = q.get_compiler(using=using)  # pylint: disable=no-member
         return bool(compiler.execute_sql(constants.SINGLE))
 
     def set_query_all(self):
@@ -65,8 +65,8 @@ class SalesforceQuery(Query):
         Performs a COUNT() query using the current filter constraints.
         """
         obj = self.clone()
-        obj.add_annotation(Count('pk'), alias='x_sf_count', is_summary=True)
-        number = obj.get_aggregation(using, ['x_sf_count'])['x_sf_count']
+        obj.add_annotation(Count('pk'), alias='x_sf_count', is_summary=True)  # pylint: disable=no-member
+        number = obj.get_aggregation(using, ['x_sf_count'])['x_sf_count']  # pylint: disable=no-member
         if number is None:
             number = 0
         return number

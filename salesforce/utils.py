@@ -84,6 +84,7 @@ def convert_lead(lead, converted_status=None, **kwargs):
 
     for more details.
     """
+    # pylint:disable=protected-access
     if not beatbox:
         raise InterfaceError("To use convert_lead, you'll need to install the Beatbox library.")
 
@@ -105,9 +106,8 @@ def convert_lead(lead, converted_status=None, **kwargs):
     ret = dict((x._name[1], str(x)) for x in response)
 
     if "errors" in str(ret):
-        raise DatabaseError("The Lead conversion failed: {0}, leadId={1}".format(
-                            ret['errors'], ret['leadId']))
-
+        raise DatabaseError("The Lead conversion failed: {0}, leadId={1}"
+                            .format(ret['errors'], ret['leadId']))
     return ret
 
 

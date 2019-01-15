@@ -11,19 +11,16 @@ Salesforce introspection code.  (like django.db.backends.*.introspection)
 
 import logging
 import re
-
-from salesforce.dbapi import driver
-import salesforce.fields
+from collections import OrderedDict
 
 from django.db.backends.base.introspection import BaseDatabaseIntrospection
-
-from salesforce.backend import utils
-
-# require "simplejson" to ensure that it is available to "requests" hook.
-import simplejson  # NOQA
-
-from collections import OrderedDict
 from django.utils.text import camel_case_to_spaces
+# require "simplejson" to ensure that it is available to "requests" hook.
+import simplejson  # NOQA pylint:disable=unused-import
+
+import salesforce.fields
+from salesforce.backend import utils
+from salesforce.dbapi import driver
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +43,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     Other methods are very customized with hooks for
     by django.core.management.commands.inspectdb
     """
+    # pylint:disable=abstract-method  # undefined: get_key_columns, get_sequences
+
     data_types_reverse = {
         'base64':                         'TextField',
         'boolean':                        'BooleanField',
@@ -86,7 +85,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def table_list_cache(self):
         if self._table_list_cache is None:
             url = utils.rest_api_url(self.connection.sf_session, 'sobjects')
-            log.debug('Request API URL: %s' % url)
+            log.debug('Request API URL: %s', url)
             response = driver.handle_api_exceptions(url, self.connection.sf_session.get)
             # charset is detected from headers by requests package
             self._table_list_cache = response.json(object_pairs_hook=OrderedDict)
@@ -99,7 +98,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def table_description_cache(self, table):
         if table not in self._table_description_cache:
             url = utils.rest_api_url(self.connection.sf_session, 'sobjects', table, 'describe/')
-            log.debug('Request API URL: %s' % url)
+            log.debug('Request API URL: %s', url)
             response = driver.handle_api_exceptions(url, self.connection.sf_session.get)
             self._table_description_cache[table] = response.json(object_pairs_hook=OrderedDict)
             assert self._table_description_cache[table]['fields'][0]['type'] == 'id', (
@@ -119,6 +118,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def get_table_description(self, cursor, table_name):
         "Returns a description of the table, with the DB-API cursor.description interface."
+        # pylint:disable=too-many-locals,unused-argument
         result = []
         for field in self.table_description_cache(table_name)['fields']:
             params = OrderedDict()
@@ -196,10 +196,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             # Example of back_collision: a class Aaa has a ForeignKey to a class
             # Bbb and the class Bbb has any field with the name 'aaa'.
             back_name_collisions = [
-                    x['name'] for x in self.table_description_cache(ref)['fields']
-                    if re.sub('Id$' if x['type'] == 'reference' else '', '',
-                              re.sub('__c$', '', x['name'])
-                              ).replace('_', '').lower() == table2model(table_name).lower()]
+                x['name'] for x in self.table_description_cache(ref)['fields']
+                if re.sub('Id$' if x['type'] == 'reference' else '', '',
+                          re.sub('__c$', '', x['name'])
+                          ).replace('_', '').lower() == table2model(table_name).lower()]
             # add `related_name` only if necessary
             if len(ilist) > 1 or back_name_collisions:
                 last_with_important_related_name.extend(ilist)
@@ -250,6 +250,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             self._converted_lead_status = cur.fetchone()['MasterLabel']
         return self._converted_lead_status
 
+# pylint:disable=too-few-public-methods
+
 
 class SymbolicModelsName(object):
     """A symbolic name from the `models` module.
@@ -297,5 +299,5 @@ class SfProtectName(str):
 
 reverse_models_names = dict((obj.value, obj) for obj in
                             [SymbolicModelsName(name) for name in
-                                ('NOT_UPDATEABLE', 'NOT_CREATEABLE', 'READ_ONLY')
+                             ('NOT_UPDATEABLE', 'NOT_CREATEABLE', 'READ_ONLY')
                              ])

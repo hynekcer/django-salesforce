@@ -9,13 +9,13 @@
 Salesforce database backend for Django.  (like django,db.backends.*.base)
 """
 
-import requests
 import sys
 import threading
 
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from django.db.backends.base.base import BaseDatabaseWrapper
+import requests
 from requests.adapters import HTTPAdapter
 
 from salesforce.auth import SalesforcePasswordAuth
@@ -29,7 +29,7 @@ from salesforce.backend.introspection import DatabaseIntrospection
 from salesforce.backend.schema import DatabaseSchemaEditor
 # from django.db.backends.signals import connection_created
 from salesforce.dbapi import get_max_retries, driver as Database
-from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError  # NOQA - TODO
+from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError  # NOQA pylint:disable=unused-import
 
 try:
     from urllib.parse import urlparse
@@ -45,6 +45,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     """
     Core class that provides all DB support.
     """
+    # pylint:disable=abstract-method,too-many-instance-attributes
+    #     undefined abstract methods: _start_transaction_under_autocommit, create_cursor, is_usable
+
     vendor = 'salesforce'
     # Operators [contains, startswithm, endswith] are incorrectly
     # case insensitive like sqlite3.
@@ -142,9 +145,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def validate_settings(self, d):
         for k in ('ENGINE', 'CONSUMER_KEY', 'CONSUMER_SECRET', 'USER', 'PASSWORD', 'HOST'):
-            if(k not in d):
+            if k not in d:
                 raise ImproperlyConfigured("Required '%s' key missing from '%s' database settings." % (k, self.alias))
-            elif not(d[k]):
+            elif not d[k]:
                 raise ImproperlyConfigured("'%s' key is the empty string in '%s' database settings." % (k, self.alias))
 
         try:
@@ -157,6 +160,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         Return a fake cursor for accessing the Salesforce API with SOQL.
         """
+        # pylint:disable=arguments-differ
         from salesforce.backend.query import CursorWrapper
         cursor = CursorWrapper(self, query)
         return cursor
@@ -165,6 +169,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         Do not quote column and table names in the SOQL dialect.
         """
+        # pylint:disable=no-self-use
         return name
 
     @property

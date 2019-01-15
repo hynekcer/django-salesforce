@@ -18,7 +18,7 @@ class DatabaseSchemaEditor(object):
     # State-managing methods
 
     def __enter__(self):
-        self.deferred_sql = []
+        self.deferred_sql = []  # pylint:disable=attribute-defined-outside-init
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

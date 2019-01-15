@@ -1,12 +1,12 @@
 # All error types described in DB API 2 are implemented the same way as in
 # Django (1.10 to 2.18)., otherwise some exceptions are not correctly reported in it.
-from . import log
 import sys
+from . import log
 PY3 = sys.version_info[0] == 3
+# pylint:disable=too-few-public-methods
 
-
-class Error(Exception if PY3 else StandardError):  # NOQA: StandardError undefined on PY3
-    pass
+class Error(Exception if PY3 else StandardError):  # NOQA: # pylint: disable=undefined-variable
+    pass                                           # StandardError is undefined in PY3
 
 
 class InterfaceError(Error):

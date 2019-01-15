@@ -21,12 +21,13 @@ Dynamic Models created by selection from
 
 
 """
-from salesforce.models import *  # NOQA
+from salesforce.models import *  # NOQA pylint:disable=unused-wildcard-import,wildcard-import
 from salesforce.backend.indep import LazyField
 import salesforce
 
 Model = salesforce.models.ModelTemplate
 
+# pylint: disable=invalid-name
 CharField = LazyField(salesforce.models.CharField)
 EmailField = LazyField(salesforce.models.EmailField)
 URLField = LazyField(salesforce.models.URLField)

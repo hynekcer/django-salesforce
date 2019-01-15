@@ -4,9 +4,12 @@
 # (c) 2012-2013 Freelancers Union (http://www.freelancersunion.org)
 # See LICENSE.md for details
 #
+# pylint:disable=deprecated-method,invalid-name,protected-access,too-many-lines,unused-variable
+
 from decimal import Decimal
-from distutils.util import strtobool
+from distutils.util import strtobool  # pylint: disable=no-name-in-module,import-error # venv inst pylint false positiv
 import datetime
+import logging
 import os
 import pytz
 
@@ -19,7 +22,7 @@ from django.utils import timezone
 import salesforce
 from salesforce import router
 from salesforce.backend import DJANGO_20_PLUS, DJANGO_22_PLUS
-from salesforce.backend.test_helpers import (  # NOQA test decorators
+from salesforce.backend.test_helpers import (  # NOQA pylint:disable=unused-import
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (
     current_user, default_is_sf, sf_alias, uid_version as uid,
@@ -32,7 +35,6 @@ from salesforce.testrunner.example.models import (
         Organization, models_template,
         )
 
-import logging
 log = logging.getLogger(__name__)
 
 QUIET_KNOWN_BUGS = strtobool(os.getenv('QUIET_KNOWN_BUGS', 'false'))
@@ -58,6 +60,7 @@ def refresh(obj):
 
 class BasicSOQLRoTest(TestCase, LazyTestMixin):
     """Tests that need no setUp/tearDown"""
+    # pylint:disable=no-self-use,pointless-statement
 
     databases = '__all__'
 
@@ -81,8 +84,8 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         (At least 3 manually created Contacts must exist before these read-only tests.)
         """
         contacts = Contact.objects.raw(
-                "SELECT Id, LastName, FirstName FROM Contact "
-                "LIMIT 2", translation={'id': 'Id'})
+            "SELECT Id, LastName, FirstName FROM Contact "
+            "LIMIT 2", translation={'id': 'Id'})
         self.assertEqual(len(contacts), 2)
         # It had a side effect that the same assert failed second times.
         self.assertEqual(len(contacts), 2)
@@ -93,8 +96,8 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         """Get the first two contacts by raw query with a ForeignKey id field.
         """
         contacts = Contact.objects.raw(
-                "SELECT Id, LastName, FirstName, OwnerId FROM Contact "
-                "LIMIT 2")
+            "SELECT Id, LastName, FirstName, OwnerId FROM Contact "
+            "LIMIT 2")
         self.assertEqual(len(contacts), 2)
         '%s' % contacts[0].__dict__  # Check that all fields are accessible
         self.assertIn('@', contacts[0].owner.Email)
@@ -161,7 +164,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
 
         current_sf_user = User.objects.get(Username=current_user)
         orig_objects = list(ApexEmailNotification.objects.filter(
-                Q(user=current_sf_user) | Q(email='apex.bugs@example.com')))
+            Q(user=current_sf_user) | Q(email='apex.bugs@example.com')))
         _ = orig_objects  # NOQA
         try:
             notifier_u = current_sf_user.apex_email_notification
@@ -227,10 +230,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         """Test inserting a date.
         """
         now = timezone.now().replace(microsecond=0)
-        contact = Contact(
-                first_name='Joe',
-                last_name='Freelancer',
-                email_bounced_date=now)
+        contact = Contact(first_name='Joe', last_name='Freelancer', email_bounced_date=now)
         contact.save()
         try:
             self.assertEqual(refresh(contact).email_bounced_date, now)
@@ -258,8 +258,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
                           owner=other_user_obj)
         contact.save()
         try:
-            self.assertEqual(
-                    refresh(contact).owner.Username, other_user_obj.Username)
+            self.assertEqual(refresh(contact).owner.Username, other_user_obj.Username)
         finally:
             contact.delete()
 
@@ -272,10 +271,10 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         test_contact.save()
         try:
             contacts = Contact.objects.filter(
-                    Q(account__isnull=True) | Q(account=None),
-                    account=None,
-                    account__isnull=True,
-                    first_name='sf_test'
+                Q(account__isnull=True) | Q(account=None),
+                account=None,
+                account__isnull=True,
+                first_name='sf_test'
             )
             self.assertEqual(len(contacts), 1)
         finally:
@@ -896,9 +895,12 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         test_task = Task(who=test_lead)
         test_task.save()
         try:
-            qs = Task.objects.filter(who__in=Lead.objects.filter(pk=test_lead.pk,
-                                     owner__Username=current_user,
-                                     last_modified_by__Username=current_user))
+            qs = Task.objects.filter(
+                who__in=Lead.objects.filter(
+                    pk=test_lead.pk,
+                    owner__Username=current_user,
+                    last_modified_by__Username=current_user)
+            )
             sql, params = qs.query.get_compiler('salesforce').as_sql()
             self.assertRegexpMatches(sql, r'SELECT Task.Id, .* FROM Task WHERE Task.WhoId IN \(SELECT ')
             self.assertIn('Lead.Owner.Username = %s', sql)

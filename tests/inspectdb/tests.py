@@ -2,15 +2,12 @@
 
 test of a dependent module.
 """
-import unittest
 import os
 import re
+import unittest
+from collections import OrderedDict
 
 from django.utils.six import assertRegex
-try:
-    from collections import OrderedDict
-except ImportError:
-    from django.utils.datastructures import SortedDict as OrderedDict
 
 
 def relative_path(path):
