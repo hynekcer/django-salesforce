@@ -85,7 +85,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         """
         contacts = Contact.objects.raw(
             "SELECT Id, LastName, FirstName FROM Contact "
-            "LIMIT 2", translation={'id': 'Id'})
+            "LIMIT 2", translations={'id': 'Id'})
         self.assertEqual(len(contacts), 2)
         # It had a side effect that the same assert failed second times.
         self.assertEqual(len(contacts), 2)

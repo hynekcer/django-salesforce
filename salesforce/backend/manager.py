@@ -46,14 +46,14 @@ class SalesforceManager(manager.Manager):
         else:
             return super(SalesforceManager, self).using(alias)
 
-    def raw(self, raw_query, params=None, *args, **kwargs):
+    def raw(self, raw_query, params=None, translations=None):
         if router.is_sf_database(self.db):
             from salesforce.backend import query, models_sql_query
             q = models_sql_query.SalesforceRawQuery(raw_query, self.db, params)
             return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q,
                                                params=params, using=self.db)
         else:
-            return super(SalesforceManager, self).raw(raw_query, params, *args, **kwargs)
+            return super(SalesforceManager, self).raw(raw_query, params=params, translations=translations)
 
     def query_all(self):
         if router.is_sf_database(self.db):
