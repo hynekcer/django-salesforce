@@ -192,12 +192,12 @@ class CursorWrapper(object):
     to the SF REST API
     """
 
-    def __init__(self, db, query=None):
+    def __init__(self, db):
         """
         Connect to the Salesforce API.
         """
         self.db = db
-        self.query = query
+        self.query = None
         self.session = db.sf_session
         # A consistent value of empty self.results after execute will be `iter([])`
         self.results = None
@@ -264,6 +264,9 @@ class CursorWrapper(object):
                 self.results = self.query_results(data)
         else:
             self.results = iter([])
+
+    def prepare_query(self, query):
+        self.query = query
 
     def execute_django(self, q, args=()):
         """

@@ -17,7 +17,7 @@ from django.db.models import query
 from django.db.models.sql.datastructures import EmptyResultSet
 
 from salesforce.backend import DJANGO_20_PLUS
-from salesforce.backend.utils import CursorWrapper, prep_for_deserialize
+from salesforce.backend.utils import prep_for_deserialize
 from salesforce.backend.compiler import SQLCompiler
 
 
@@ -47,7 +47,8 @@ class SalesforceModelIterable(query.BaseIterable):
         except EmptyResultSet:
             # StopIteration
             return
-        cursor = CursorWrapper(connections[queryset.db], queryset.query)
+        cursor = connections[queryset.db].cursor()
+        cursor.prepare_query(queryset.query)
         cursor.execute(sql, params)
 
         only_load = queryset.query.get_loaded_field_names()

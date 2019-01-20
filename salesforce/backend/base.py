@@ -28,7 +28,7 @@ from salesforce.backend.operations import DatabaseOperations
 from salesforce.backend.introspection import DatabaseIntrospection
 from salesforce.backend.schema import DatabaseSchemaEditor
 # from django.db.backends.signals import connection_created
-from salesforce.backend.query import CursorWrapper
+from salesforce.backend.utils import CursorWrapper
 from salesforce.dbapi import get_max_retries, driver as Database
 from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError  # NOQA pylint:disable=unused-import
 
@@ -157,13 +157,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             raise ImproperlyConfigured("'HOST' key in '%s' database settings should be a valid URL: %s" %
                                        (self.alias, exc))
 
-    def cursor(self, query=None):
+    def cursor(self):
         """
         Return a fake cursor for accessing the Salesforce API with SOQL.
         """
-        # pylint:disable=arguments-differ
-        cursor = CursorWrapper(self, query)
-        return cursor
+        return CursorWrapper(self)
 
     def quote_name(self, name):
         """

@@ -77,7 +77,8 @@ class SQLCompiler(compiler.SQLCompiler):
             else:
                 return
 
-        cursor = self.connection.cursor(self.query)
+        cursor = self.connection.cursor()
+        cursor.prepare_query(self.query)
         cursor.execute(sql, params)
 
         if not result_type or result_type == 'cursor':
