@@ -33,6 +33,12 @@ PROBLEMATIC_OBJECTS = [
     'PlatformStatusAlertEvent'  # new in API 45.0 Spring '19
 ]
 
+# these global variables are for `salesforce.management.commands.inspectdb`
+last_introspected_model = None
+last_with_important_related_name = None  # pylint:disable=invalid-name
+last_read_only = None
+last_refs = None
+
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):
     """
@@ -164,15 +170,17 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         Returns a dictionary of {field_index: (field_index_other_table, other_table)}
         representing all relationships to the given table. Indexes are 0-based.
         """
+        # pylint:disable=global-statement,too-many-locals,too-many-nested-blocks,unused-argument
         def table2model(table_name):
             return SfProtectName(table_name).title().replace(' ', '').replace('-', '')
-        global last_introspected_model, last_with_important_related_name, last_read_only, last_refs
+        global last_introspected_model, last_read_only, last_refs
+        global last_with_important_related_name  # pylint:disable=invalid-name
         result = {}
         reverse = {}
         last_with_important_related_name = []
         last_read_only = {}
         last_refs = {}
-        for i, field in enumerate(self.table_description_cache(table_name)['fields']):
+        for _, field in enumerate(self.table_description_cache(table_name)['fields']):
             if field['type'] == 'reference' and field['referenceTo']:
                 reference_to_name = SfProtectName(field['referenceTo'][0])
                 relationship_order = field['relationshipOrder']

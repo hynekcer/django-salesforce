@@ -25,10 +25,10 @@ def fix_field_params_repr(params):
 
         def __repr__(self):
             out = []
-            for x0, x1 in self:
+            for x_0, x_1 in self:
                 out.append('(%s, %s)' % (
-                    repr(ReprUnicode(x0) if isinstance(x0, text_type) else x0),
-                    repr(ReprUnicode(x1) if isinstance(x1, text_type) else x1)
+                    repr(ReprUnicode(x_0) if isinstance(x_0, text_type) else x_0),
+                    repr(ReprUnicode(x_1) if isinstance(x_1, text_type) else x_1)
                 ))
             return '[%s]' % (', '.join(out))
     if PY3:

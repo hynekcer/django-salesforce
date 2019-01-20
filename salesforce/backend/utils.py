@@ -165,7 +165,7 @@ def extract_values(query):
 def extract_values_inner(row, query):
     d = dict()
     fields = query.model._meta.fields
-    for index, field in enumerate(fields):
+    for _, field in enumerate(fields):
         sf_read_only = getattr(field, 'sf_read_only', 0)
         if (
                 field.get_internal_type() == 'AutoField' or

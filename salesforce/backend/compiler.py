@@ -10,7 +10,7 @@ Generate queries using the SOQL dialect.  (like django.db.models.sql.compiler
 """
 import re
 from django.db import models
-from django.db.models.sql import compiler, where, constants, AND
+from django.db.models.sql import compiler, where as sql_where, constants, AND
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.transaction import TransactionManagementError
 
@@ -26,6 +26,11 @@ class SQLCompiler(compiler.SQLCompiler):
     A subclass of the default SQL compiler for the SOQL dialect.
     """
     soql_trans = None
+
+    def __init__(self, *args, **kwargs):
+        super(SQLCompiler, self).__init__(*args, **kwargs)
+        self.subquery = None
+        self.root_alias = None
 
     def get_from_clause(self):
         """
@@ -282,7 +287,7 @@ class SQLCompiler(compiler.SQLCompiler):
         return self.soql_trans
 
 
-class SalesforceWhereNode(where.WhereNode):
+class SalesforceWhereNode(sql_where.WhereNode):
     overridden_types = ['isnull']
 
     # TODO compare, how much it is updated to 1.7
@@ -372,7 +377,7 @@ class SalesforceWhereNode(where.WhereNode):
                 sql_string = '(%s)' % sql_string
         return sql_string, result_params
 
-    def add(self, data, conn_type, **kwargs):
+    def add(self, data, conn_type, squash=True):
         # The filter lookup `isnull` is very special and can not be
         # replaced only by `models.Field.register_lookup`. Otherwise the
         # register_lookup is preferred.
@@ -380,7 +385,7 @@ class SalesforceWhereNode(where.WhereNode):
         if cond:
             # "lhs" and "rhs" means Left and Right Hand Side of an condition
             data = IsNull(data.lhs, data.rhs)
-        return super(SalesforceWhereNode, self).add(data, conn_type, **kwargs)
+        return super(SalesforceWhereNode, self).add(data, conn_type, squash=squash)
 
     as_salesforce = as_sql
     del as_sql

@@ -44,14 +44,14 @@ class SalesforceModelBase(ModelBase):
     This metaclass overrides the default table-guessing behavior of Django
     and replaces it with code that defaults to the model name.
     """
-    def __new__(cls, name, bases, attrs):
+    def __new__(cls, name, bases, attrs, **kwargs):
         attr_meta = attrs.get('Meta', None)
         supplied_db_table = getattr(attr_meta, 'db_table', None)
         if getattr(attr_meta, 'dynamic_field_patterns', None):
             pattern_module, dynamic_field_patterns = getattr(attr_meta, 'dynamic_field_patterns')
             make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs)
             delattr(attr_meta, 'dynamic_field_patterns')
-        result = super(SalesforceModelBase, cls).__new__(cls, name, bases, attrs)
+        result = super(SalesforceModelBase, cls).__new__(cls, name, bases, attrs, **kwargs)
         if models.Model not in bases and supplied_db_table is None:
             result._meta.db_table = result._meta.concrete_model._meta.object_name
         return result

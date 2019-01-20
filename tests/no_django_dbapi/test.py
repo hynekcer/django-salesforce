@@ -18,11 +18,11 @@ class Test(unittest.TestCase):
 
 class OAuthTest(unittest.TestCase):
 
-    def validate_oauth(self, d):
+    def validate_oauth(self, settings_dict):
         for key in ('access_token', 'id', 'instance_url', 'issued_at', 'signature'):
-            if key not in d:
+            if key not in settings_dict:
                 self.fail("Missing %s key in returned oauth data." % key)
-            elif not d[key]:
+            elif not settings_dict[key]:
                 self.fail("Empty value for %s key in returned oauth data." % key)
 
     def test_token_renewal(self):

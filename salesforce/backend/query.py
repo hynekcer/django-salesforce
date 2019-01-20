@@ -110,7 +110,7 @@ class SalesforceQuerySet(query.QuerySet):
         super(SalesforceQuerySet, self).__init__(*args, **kwargs)
         self._iterable_class = SalesforceModelIterable
 
-    def iterator(self):
+    def iterator(self, chunk_size=2000):
         """
         An iterator over the results from applying this QuerySet to the
         database.

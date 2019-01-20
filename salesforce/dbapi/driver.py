@@ -73,10 +73,10 @@ if getattr(settings, 'IPV4_ONLY', False) and socket.getaddrinfo.__module__ in ('
 # ----
 
 
-def handle_api_exceptions(url, f, *args, **kwargs):
+def handle_api_exceptions(url, session_method, *args, **kwargs):
     """Call REST API and handle exceptions
     Params:
-        f:  requests.get or requests.post...
+        session_method:  requests.get or requests.post...
         _cursor: sharing the debug information in cursor
     """
     # pylint:disable=too-many-branches
@@ -89,7 +89,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
     log.debug('Request API URL: %s', url)
     request_count += 1
     try:
-        response = f(url, *args, **kwargs_in)
+        response = session_method(url, *args, **kwargs_in)
     # TODO some timeouts can be rarely raised as "SSLError: The read operation timed out"
     except requests.exceptions.Timeout:
         raise SalesforceError("Timeout, URL=%s" % url)
@@ -97,11 +97,11 @@ def handle_api_exceptions(url, f, *args, **kwargs):
         # Unauthorized (expired or invalid session ID or OAuth)
         data = response.json()[0]
         if data['errorCode'] == 'INVALID_SESSION_ID':
-            token = f.__self__.auth.reauthenticate()
+            token = session_method.__self__.auth.reauthenticate()
             if 'headers' in kwargs:
                 kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
             try:
-                response = f(url, *args, **kwargs_in)
+                response = session_method(url, *args, **kwargs_in)
             except requests.exceptions.Timeout:
                 raise SalesforceError("Timeout, URL=%s" % url)
 
@@ -118,7 +118,7 @@ def handle_api_exceptions(url, f, *args, **kwargs):
         # Errors are reported in the body
         data = response.json()[0]
     if response.status_code == 404:  # ResourceNotFound
-        if (f.__func__.__name__ == 'delete') and data['errorCode'] in (
+        if (session_method.__func__.__name__ == 'delete') and data['errorCode'] in (
                 'ENTITY_IS_DELETED', 'INVALID_CROSS_REFERENCE_KEY'):
             # It is a delete command and the object is in trash bin or
             # completely deleted or it only could be a valid Id for this type

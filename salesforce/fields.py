@@ -58,7 +58,7 @@ class SalesforceAutoField(fields.AutoField):
     def get_prep_value(self, value):
         return self.to_python(value)
 
-    def contribute_to_class(self, cls, name):
+    def contribute_to_class(self, cls, name, **kwargs):
         name = name if self.name is None else self.name
         # we can't require "self.auto_created==True" due to backward compatibility
         # with old migrations created before v0.6. Other conditions are enough.
@@ -83,7 +83,7 @@ class SalesforceAutoField(fields.AutoField):
                         name, self
                     )
                 )
-        super(SalesforceAutoField, self).contribute_to_class(cls, name)
+        super(SalesforceAutoField, self).contribute_to_class(cls, name, **kwargs)
         cls._meta.auto_field = self
 
 
@@ -133,8 +133,10 @@ class SfField(models.Field):
                 column = self.sf_namespace + column + '__c'
         return attname, column
 
-    def contribute_to_class(self, cls, name, **kwargs):
-        super(SfField, self).contribute_to_class(cls, name, **kwargs)
+    def contribute_to_class(self, cls, name, private_only=False, **kwargs):
+        # Different arguments are in Django 1.11 vs. 2.0, therefore we use universal **kwargs
+        # pylint:disable=arguments-differ
+        super(SfField, self).contribute_to_class(cls, name, private_only=private_only, **kwargs)
         if self.sf_custom is None and hasattr(cls._meta, 'sf_custom'):
             # Only custom fields in models explicitly marked by
             # Meta custom=True are recognized automatically - for

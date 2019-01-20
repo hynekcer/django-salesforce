@@ -104,15 +104,15 @@ class LazyTestMixin(object):
             self.lazyAssertEqual(expected_requests, request_count_1 - request_count_0, msg=msg)
 
 
-def no_soap_decorator(f):
+def no_soap_decorator(func):
     """Decorator to not temporarily use SOAP API (Beatbox)"""
 
-    @wraps(f)
+    @wraps(func)
     def wrapper(*args, **kwds):
         beatbox_orig = driver.beatbox
         setattr(driver, 'beatbox', None)
         try:
-            return f(*args, **kwds)
+            return func(*args, **kwds)
         finally:
             setattr(driver, 'beatbox', beatbox_orig)
     return wrapper

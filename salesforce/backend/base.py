@@ -143,18 +143,18 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         # serious problem to ignore autocommit off
         pass
 
-    def validate_settings(self, d):
+    def validate_settings(self, settings_dict):
         for k in ('ENGINE', 'CONSUMER_KEY', 'CONSUMER_SECRET', 'USER', 'PASSWORD', 'HOST'):
-            if k not in d:
+            if k not in settings_dict:
                 raise ImproperlyConfigured("Required '%s' key missing from '%s' database settings." % (k, self.alias))
-            elif not d[k]:
+            elif not settings_dict[k]:
                 raise ImproperlyConfigured("'%s' key is the empty string in '%s' database settings." % (k, self.alias))
 
         try:
-            urlparse(d['HOST'])
-        except Exception as e:
+            urlparse(settings_dict['HOST'])
+        except Exception as exc:
             raise ImproperlyConfigured("'HOST' key in '%s' database settings should be a valid URL: %s" %
-                                       (self.alias, e))
+                                       (self.alias, exc))
 
     def cursor(self, query=None):
         """

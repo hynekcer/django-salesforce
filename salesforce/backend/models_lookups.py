@@ -9,12 +9,12 @@ class IsNull(models.lookups.IsNull):
     # The expected result base class above is `models.lookups.IsNull`.
     lookup_name = 'isnull'
 
-    def as_sql(self, qn, connection):
+    def as_sql(self, compiler, connection):
         if connection.vendor == 'salesforce':
-            sql, params = qn.compile(self.lhs)
+            sql, params = compiler.compile(self.lhs)
             return ('%s %s null' % (sql, ('=' if self.rhs else '!='))), params
         else:
-            return super(IsNull, self).as_sql(qn, connection)
+            return super(IsNull, self).as_sql(compiler, connection)
 
 
 models.Field.register_lookup(IsNull)
@@ -24,10 +24,10 @@ class Range(models.lookups.Range):
     # The expected result base class above is `models.lookups.Range`.
     lookup_name = 'range'
 
-    def as_sql(self, qn, connection):
+    def as_sql(self, compiler, connection):
         if connection.vendor == 'salesforce':
-            lhs, lhs_params = self.process_lhs(qn, connection)
-            rhs, rhs_params = self.process_rhs(qn, connection)
+            lhs, lhs_params = self.process_lhs(compiler, connection)
+            rhs, rhs_params = self.process_rhs(compiler, connection)
             assert tuple(rhs) == ('%s', '%s')  # tuple in Django 1.11+, list in old Django
             assert len(rhs_params) == 2
             params = lhs_params + [rhs_params[0]] + lhs_params + [rhs_params[1]]
@@ -35,7 +35,7 @@ class Range(models.lookups.Range):
             # parameters will be passed finally directly to CursorWrapper.execute
             return '(%s >= %s AND %s <= %s)' % (lhs, rhs[0], lhs, rhs[1]), params
         else:
-            return super(Range, self).as_sql(qn, connection)
+            return super(Range, self).as_sql(compiler, connection)
 
 
 models.Field.register_lookup(Range)

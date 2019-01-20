@@ -34,7 +34,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def connection_init(self):
         pass
 
-    def sql_flush(self, style, tables, sequences):
+    def sql_flush(self, style, tables, sequences, allow_cascade=False):
         return []
 
     def quote_name(self, name):
@@ -52,12 +52,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         """
         return value
 
-    def value_to_db_decimal(self, value, *args):
-        if str(value) == 'DEFAULTED_ON_CREATE':
-            return value
-        return super(DatabaseOperations, self).value_to_db_decimal(value, *args)
-
-    def last_insert_id(self, cursor, db_table, db_column):
+    def last_insert_id(self, cursor, table_name, pk_name):
         return cursor.lastrowid
 
     def fetch_returned_insert_id(self, cursor):
@@ -75,7 +70,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def adapt_timefield_value(self, value):
         return value
 
-    def adapt_decimalfield_value(self, value, max_digits, decimal_places):
+    def adapt_decimalfield_value(self, value, max_digits=None, decimal_places=None):
         if isinstance(value, DefaultedOnCreate):
             return value
         return django.db.backends.utils.format_number(value, max_digits, decimal_places)

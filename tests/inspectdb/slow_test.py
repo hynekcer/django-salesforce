@@ -59,8 +59,8 @@ def run():
             try:
                 n_read += 1
                 obj = test_class.objects.all()[0]
-            except SalesforceError as e:
-                stderr.write("\n************** %s %s\n" % (tab['name'], e))
+            except SalesforceError as exc:
+                stderr.write("\n************** %s %s\n" % (tab['name'], exc))
                 n_read_errors += 1
             except IndexError:
                 n_no_data += 1
@@ -99,8 +99,8 @@ def run():
                 try:
                     n_write += 1
                     obj.save(force_update=True)
-                except SalesforceError as e:
-                    stderr.write("\n************** %s %s\n" % (tab['name'], e))
+                except SalesforceError as exc:
+                    stderr.write("\n************** %s %s\n" % (tab['name'], exc))
                     n_write_errors += 1
                 else:
                     # object 'Topic' doesn't have the attribute 'last_modified_date'

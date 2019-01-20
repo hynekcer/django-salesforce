@@ -66,13 +66,11 @@ class ModelRouter(object):
         """
         if model_name:
             model = apps.get_model(app_label, model_name)
-        elif 'model' in hints:
-            # hints are used with less priority, because many hints are dynamic
-            # models on a '__fake__' module which are not SalesforceModels
-            model = hints['model']
         else:
-            # in data migrations
-            model = None
+            # hints are used with less priority, because many hints are dynamic
+            # models made by migrations on a '__fake__' module which are not
+            # SalesforceModels
+            model = hints.get('model')
 
         if hasattr(model, '_salesforce_object'):
             # SF models can be migrated if SALESFORCE_DB_ALIAS is e.g.
