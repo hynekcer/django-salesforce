@@ -11,6 +11,7 @@ import socket
 
 import requests
 
+import salesforce
 from salesforce.dbapi import settings  # i.e. django.conf.settings
 from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
@@ -71,6 +72,20 @@ if getattr(settings, 'IPV4_ONLY', False) and socket.getaddrinfo.__module__ in ('
     socket.getaddrinfo = getaddrinfo_wrapper
 
 # ----
+
+
+def rest_api_url(sf_session, service, *args):
+    """Join the URL of REST_API
+
+    Examples: rest_url(sf_session, "query?q=select+id+from+Organization")
+              rest_url(sf_session, "sobject", "Contact", id)
+    """
+    return '{base}/services/data/v{version}/{service}{slash_args}'.format(
+        base=sf_session.auth.instance_url,
+        version=salesforce.API_VERSION,
+        service=service,
+        slash_args=''.join('/' + x for x in args)
+    )
 
 
 def handle_api_exceptions(url, session_method, *args, **kwargs):

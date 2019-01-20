@@ -16,13 +16,11 @@ from django.conf import settings
 def is_sf_database(db, model=None):
     """The alias is a Salesforce database."""
     from django.db import connections
-    from salesforce.backend.base import DatabaseWrapper
     if db is None:
         return getattr(model, '_salesforce_object', False)
     else:
         engine = connections[db].settings_dict['ENGINE']
-        return (engine == 'salesforce.backend' or
-                isinstance(connections[db], DatabaseWrapper))
+        return engine == 'salesforce.backend' or connections[db].vendor == 'salesforce'
 
 
 class ModelRouter(object):

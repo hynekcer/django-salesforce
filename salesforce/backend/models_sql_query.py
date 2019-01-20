@@ -22,8 +22,7 @@ class SalesforceRawQuery(RawQuery):
         return ['Id']  # originally [SF_PK] before Django 1.8.4
 
     def _execute_query(self):
-        from salesforce.backend.query import CursorWrapper
-        self.cursor = CursorWrapper(connections[self.using], self)
+        self.cursor = connections[self.using].cursor(self)
         self.cursor.execute(self.sql, self.params)
 
     def __repr__(self):

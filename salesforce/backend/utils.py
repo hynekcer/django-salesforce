@@ -10,13 +10,13 @@ from itertools import islice
 import pytz
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models.sql import subqueries
+from django.db import models
+from django.db.models.sql import subqueries, Query, RawQuery
 from django.utils.six import PY3, text_type
 
-from salesforce import models
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
-from salesforce.dbapi.driver import handle_api_exceptions, DatabaseError
+from salesforce.dbapi.driver import handle_api_exceptions, rest_api_url, DatabaseError
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
 import salesforce.dbapi.driver
 
@@ -37,20 +37,6 @@ DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
 MIGRATIONS_QUERY_TO_BE_IGNORED = "SELECT django_migrations.app, django_migrations.name FROM django_migrations"
 
 
-def rest_api_url(sf_session, service, *args):
-    """Join the URL of REST_API
-
-    Examples: rest_url(sf_session, "query?q=select+id+from+Organization")
-              rest_url(sf_session, "sobject", "Contact", id)
-    """
-    return '{base}/services/data/v{version}/{service}{slash_args}'.format(
-        base=sf_session.auth.instance_url,
-        version=salesforce.API_VERSION,
-        service=service,
-        slash_args=''.join('/' + x for x in args)
-    )
-
-
 def quoted_string_literal(s):
     """
     SOQL requires single quotes to be escaped.
@@ -66,8 +52,9 @@ def arg_to_soql(arg):
     """
     Perform necessary SOQL quoting on the arg.
     """
-    if isinstance(arg, models.SalesforceModel):
-        return sql_conversions[models.SalesforceModel](arg)
+    if isinstance(arg, models.Model):
+        assert arg._salesforce_object  # pylint:disable=protected-access
+        return sql_conversions[type(arg)](arg)
     if isinstance(arg, decimal.Decimal):
         return sql_conversions[decimal.Decimal](arg)
     return sql_conversions.get(type(arg), sql_conversions[str])(arg)
@@ -77,8 +64,9 @@ def arg_to_sf(arg):
     """
     Perform necessary JSON conversion on the arg.
     """
-    if isinstance(arg, models.SalesforceModel):
-        return json_conversions[models.SalesforceModel](arg)
+    if isinstance(arg, models.Model):
+        assert arg._salesforce_object  # pylint:disable=protected-access
+        return json_conversions[type(arg)](arg)
     if isinstance(arg, decimal.Decimal):
         return json_conversions[decimal.Decimal](arg)
     return json_conversions.get(type(arg), json_conversions[str])(arg)
@@ -280,18 +268,17 @@ class CursorWrapper(object):
         """
         Fixed execute for queries coming from Django query compilers
         """
-        from salesforce.backend import models_sql_query
         if isinstance(self.query, subqueries.InsertQuery):
             response = self.execute_insert(self.query)
         elif isinstance(self.query, subqueries.UpdateQuery):
             response = self.execute_update(self.query)
         elif isinstance(self.query, subqueries.DeleteQuery):
             response = self.execute_delete(self.query)
-        elif isinstance(self.query, models_sql_query.SalesforceQuery):
+        elif isinstance(self.query, RawQuery):
+            response = self.execute_select(q, args)
+        elif isinstance(self.query, Query):
             response = self.execute_select(q, args)
             # print("response : %s" % response.text)
-        elif isinstance(self.query, models_sql_query.SalesforceRawQuery):
-            response = self.execute_select(q, args)
         elif q == MIGRATIONS_QUERY_TO_BE_IGNORED:
             response = self.execute_select(q, args)
         else:
@@ -349,7 +336,6 @@ class CursorWrapper(object):
 
     def get_pks_from_query(self, query):
         """Prepare primary keys for update and delete queries"""
-        from salesforce.backend import models_sql_query
         where = query.where
         sql = None
         if where.connector == 'AND' and not where.negated and len(where.children) == 1:
@@ -367,7 +353,7 @@ class CursorWrapper(object):
                     if isinstance(pks, (tuple, list)):
                         return pks
                     if DJANGO_111_PLUS:
-                        assert isinstance(pks, models_sql_query.SalesforceQuery)
+                        assert isinstance(pks, Query) and type(pks).__name__ == 'SalesforceQuery'
                         # # alternative solution:
                         # return list(salesforce.backend.query.SalesforceQuerySet(pk.model, query=pk, using=pk._db))
 
@@ -560,7 +546,7 @@ json_conversions = {
     datetime.datetime: date_literal,
     datetime.time: lambda d: datetime.time.strftime(d, "%H:%M:%S.%f"),
     decimal.Decimal: float,
-    models.SalesforceModel: sobj_id,
+    models.Model: sobj_id,
 }
 if not PY3:
     if False:                          # pylint:disable=using-constant-test  # fix static analysis for Python 2

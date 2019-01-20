@@ -19,8 +19,7 @@ from django.utils.text import camel_case_to_spaces
 import simplejson  # NOQA pylint:disable=unused-import
 
 import salesforce.fields
-from salesforce.backend import utils
-from salesforce.dbapi import driver
+from salesforce.dbapi.driver import handle_api_exceptions, rest_api_url
 
 log = logging.getLogger(__name__)
 
@@ -90,9 +89,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     @property
     def table_list_cache(self):
         if self._table_list_cache is None:
-            url = utils.rest_api_url(self.connection.sf_session, 'sobjects')
+            url = rest_api_url(self.connection.sf_session, 'sobjects')
             log.debug('Request API URL: %s', url)
-            response = driver.handle_api_exceptions(url, self.connection.sf_session.get)
+            response = handle_api_exceptions(url, self.connection.sf_session.get)
             # charset is detected from headers by requests package
             self._table_list_cache = response.json(object_pairs_hook=OrderedDict)
             self._table_list_cache['sobjects'] = [
@@ -103,9 +102,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def table_description_cache(self, table):
         if table not in self._table_description_cache:
-            url = utils.rest_api_url(self.connection.sf_session, 'sobjects', table, 'describe/')
+            url = rest_api_url(self.connection.sf_session, 'sobjects', table, 'describe/')
             log.debug('Request API URL: %s', url)
-            response = driver.handle_api_exceptions(url, self.connection.sf_session.get)
+            response = handle_api_exceptions(url, self.connection.sf_session.get)
             self._table_description_cache[table] = response.json(object_pairs_hook=OrderedDict)
             assert self._table_description_cache[table]['fields'][0]['type'] == 'id', (
                 "Invalid type of the first field in the table '{}'".format(table))

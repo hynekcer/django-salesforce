@@ -16,7 +16,7 @@ from django.db.models import manager
 from django.db.utils import DEFAULT_DB_ALIAS
 
 from salesforce import router
-from salesforce.backend import DJANGO_20_PLUS
+from salesforce.backend import query, models_sql_query, compiler, DJANGO_20_PLUS
 
 
 class SalesforceManager(manager.Manager):
@@ -31,7 +31,6 @@ class SalesforceManager(manager.Manager):
         if not router.is_sf_database(self.db):
             return super(SalesforceManager, self).get_queryset()
         else:
-            from salesforce.backend import query, models_sql_query, compiler
             q = models_sql_query.SalesforceQuery(self.model, where=compiler.SalesforceWhereNode)
             return query.SalesforceQuerySet(self.model, query=q, using=self.db)
 
@@ -48,7 +47,6 @@ class SalesforceManager(manager.Manager):
 
     def raw(self, raw_query, params=None, translations=None):
         if router.is_sf_database(self.db):
-            from salesforce.backend import query, models_sql_query
             q = models_sql_query.SalesforceRawQuery(raw_query, self.db, params)
             return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q,
                                                params=params, using=self.db)
