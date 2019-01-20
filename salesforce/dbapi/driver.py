@@ -17,7 +17,7 @@ from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     InternalError, ProgrammingError, NotSupportedError, SalesforceError)
 
 try:
-    import beatbox
+    import beatbox  # pylint: disable=unused-import
 except ImportError:
     beatbox = None
 

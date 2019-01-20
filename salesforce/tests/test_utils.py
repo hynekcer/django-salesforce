@@ -7,13 +7,9 @@ from unittest import skipUnless
 
 from django.test import TestCase
 
+from salesforce.dbapi.driver import beatbox
 from salesforce.testrunner.example.models import Account, Lead
 from salesforce.utils import convert_lead
-
-try:
-    import beatbox
-except ImportError:
-    beatbox = None
 
 
 class UtilitiesTest(TestCase):

@@ -1,7 +1,6 @@
 import sys
 import traceback
 from contextlib import contextmanager
-from functools import wraps
 from unittest import expectedFailure
 
 from salesforce.dbapi import connections, driver
@@ -102,17 +101,3 @@ class LazyTestMixin(object):
             msg += ('expected requests != real requests;  checked by:\n'
                     'with self.lazy_assert_n_requests({}):'.format(expected_requests))
             self.lazyAssertEqual(expected_requests, request_count_1 - request_count_0, msg=msg)
-
-
-def no_soap_decorator(func):
-    """Decorator to not temporarily use SOAP API (Beatbox)"""
-
-    @wraps(func)
-    def wrapper(*args, **kwds):
-        beatbox_orig = driver.beatbox
-        setattr(driver, 'beatbox', None)
-        try:
-            return func(*args, **kwds)
-        finally:
-            setattr(driver, 'beatbox', beatbox_orig)
-    return wrapper

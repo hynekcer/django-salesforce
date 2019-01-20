@@ -202,16 +202,11 @@ class CursorWrapper(object):
     This is the class that is actually responsible for making connections
     to the SF REST API
     """
-    # This can be used to disable SOAP API for bulk operations even if beatbox
-    # is installed and use REST API Bulk requests (Useful for tests, but worse
-    # than SOAP especially due to governor limits.)
-    use_soap_for_bulk = True
 
     def __init__(self, db, query=None):
         """
         Connect to the Salesforce API.
         """
-        import salesforce.utils
         self.db = db
         self.query = query
         self.session = db.sf_session
@@ -219,8 +214,7 @@ class CursorWrapper(object):
         self.results = None
         self.rowcount = None
         self.first_row = None
-        if salesforce.dbapi.driver.beatbox is None:
-            self.use_soap_for_bulk = False
+        self.lastrowid = None  # TODO move to dbapi.driver
 
     def __enter__(self):
         return self
@@ -243,12 +237,8 @@ class CursorWrapper(object):
         else:
             response = self.execute_django(q, args)
 
-        if response and isinstance(response, list):
-            # bulk operation SOAP
-            if all(x['success'] for x in response):
-                self.lastrowid = [item['id'] for item in response]
         # the encoding is detected automatically, e.g. from headers
-        elif response and response.text:
+        if response and response.text:
             # parse_float set to decimal.Decimal to avoid precision errors when
             # converting from the json number to a float and then to a Decimal object
             # on a model's DecimalField. This converts from json number directly
@@ -338,8 +328,8 @@ class CursorWrapper(object):
             # single object
             url = rest_api_url(self.session, 'sobjects', table, '')
             post_data = post_data[0]
-        elif not self.use_soap_for_bulk:
-            # bulk by REST
+        else:
+            # composite by REST
             url = rest_api_url(self.session, 'composite')
             post_data = {
                 'allOrNone': True,
@@ -353,15 +343,8 @@ class CursorWrapper(object):
                     for i, row in enumerate(post_data)
                 ]
             }
-        else:
-            # bulk by SOAP
-            svc = salesforce.utils.get_soap_client('salesforce')
-            for x in post_data:
-                x.update({'type': table})
-            ret = svc.create(post_data)
-            return ret
 
-        log.debug('INSERT %s%s' % (table, post_data))
+        log.debug('INSERT %s%s', table, post_data)
         return handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data), _cursor=self)
 
     def get_pks_from_query(self, query):
@@ -404,42 +387,31 @@ class CursorWrapper(object):
         table = query.model._meta.db_table
         headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)
-        pk = self.get_pks_from_query(query)
-        log.debug('UPDATE %s(%s)%s' % (table, pk, post_data))
-        if not pk:
+        pks = self.get_pks_from_query(query)
+        log.debug('UPDATE %s(%s)%r', table, pks, post_data)
+        if not pks:
             return
-        if len(pk) > 1:
-            if not self.use_soap_for_bulk:
-                # bulk by REST
-                url = rest_api_url(self.session, 'composite')
-                post_data = {
-                    'allOrNone': True,
-                    'compositeRequest': [
-                        {
-                            'method': 'PATCH',
-                            'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
-                                           salesforce.API_VERSION, table, x),
-                            'referenceId': x,
-                            'body': post_data,
-                         } for x in pk
-                     ]
-                 }
-                ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
-                                            _cursor=self)
-            else:
-                # bulk by SOAP
-                svc = salesforce.utils.get_soap_client('salesforce')
-                out = []
-                for x in pk:
-                    d = post_data.copy()
-                    d.update({'type': table, 'Id': x})
-                    out.append(d)
-                ret = svc.update(out)
-                return ret
-        else:
+        if len(pks) == 1:
             # single request
-            url = rest_api_url(self.session, 'sobjects', table, pk[0])
+            url = rest_api_url(self.session, 'sobjects', table, pks[0])
             ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data),
+                                        _cursor=self)
+        else:
+            # composite by REST
+            url = rest_api_url(self.session, 'composite')
+            post_data = {
+                'allOrNone': True,
+                'compositeRequest': [
+                    {
+                        'method': 'PATCH',
+                        'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
+                            salesforce.API_VERSION, table, x),
+                        'referenceId': x,
+                        'body': post_data,
+                    } for x in pks
+                ]
+            }
+            ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
                                         _cursor=self)
         self.rowcount = 1
         return ret

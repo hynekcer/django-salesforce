@@ -26,7 +26,7 @@ from salesforce.backend.test_helpers import (  # NOQA pylint:disable=unused-impo
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (
     current_user, default_is_sf, sf_alias, uid_version as uid,
-    no_soap_decorator, QuietSalesforceErrors, LazyTestMixin)
+    QuietSalesforceErrors, LazyTestMixin)
 from salesforce.testrunner.example.models import (
         Account, Contact, Lead, User,
         ApexEmailNotification, BusinessHours, Campaign, CronTrigger,
@@ -473,8 +473,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         finally:
             account.delete()
 
-    test_bulk_create_no_soap = no_soap_decorator(test_bulk_create)
-
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_bulk_update(self):
         """Update two Accounts by one request, after searching them by one request.
@@ -497,8 +495,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         finally:
             account_0.delete()
             account_1.delete()
-
-    test_bulk_update_no_soap = no_soap_decorator(test_bulk_update)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_bulk_delete(self):
