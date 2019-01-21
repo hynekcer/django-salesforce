@@ -6,11 +6,11 @@
 #
 
 """
-Generate queries using the SOQL dialect.  (like django.db.models.sql.compiler
+Generate queries using the SOQL dialect.  (like django.db.models.sql.compiler and  django.db.models.sql.where)
 """
 import re
 from django.db import models
-from django.db.models.sql import compiler, where as sql_where, constants, AND
+from django.db.models.sql import compiler as sql_compiler, where as sql_where, constants, AND
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.transaction import TransactionManagementError
 
@@ -21,7 +21,7 @@ import salesforce
 # pylint:no-else-return,too-many-branches,too-many-locals
 
 
-class SQLCompiler(compiler.SQLCompiler):
+class SQLCompiler(sql_compiler.SQLCompiler):
     """
     A subclass of the default SQL compiler for the SOQL dialect.
     """
@@ -291,92 +291,90 @@ class SQLCompiler(compiler.SQLCompiler):
 
 
 class SalesforceWhereNode(sql_where.WhereNode):
-    overridden_types = ['isnull']
 
-    # TODO compare, how much it is updated to 1.7
-    # TODO though there is no problem, update to Django 1.8 - 1.10!
-    # patched "django.db.models.sql.where.WhereNode.as_sql" from Django 1.5, 1.6., 1.7
+    # patched "django.db.models.sql.where.WhereNode.as_sql" from Django 1.10, 1.11, 2.0, 2.1
     # pylint:disable=no-else-return,too-many-branches,too-many-locals,unused-argument
-    def as_sql(self, qn, connection):  # pylint:disable=arguments-differ
+    def as_salesforce(self, compiler, connection):
         """
-        Returns the SQL version of the where clause and the value to be
-        substituted in. Returns '', [] if this node matches everything,
-        None, [] if this node is empty, and raises EmptyResultSet if this
+        Return the SQL version of the where clause and the value to be
+        substituted in. Return '', [] if this node matches everything,
+        None, [] if this node is empty, and raise EmptyResultSet if this
         node can't match anything.
         """
-        # Note that the logic here is made slightly more complex than
-        # necessary because there are two kind of empty nodes: Nodes
-        # containing 0 children, and nodes that are known to match everything.
-        # A match-everything node is different than empty node (which also
-        # technically matches everything) for backwards compatibility reasons.
-        # Refs #5261.
 
-        if not isinstance(qn, SQLCompiler):
+        # *** patch 1 (add) begin
+        # # prepare SOQL translations
+        if not isinstance(compiler, SQLCompiler):
             # future fix for DJANGO_20_PLUS, when deprecated "use_for_related_fields"
             # removed from managers,
             # "str(<UpdateQuery...>)" or "<UpdateQuery...>.get_compiler('default').as_sql()"
-            return super(SalesforceWhereNode, self).as_sql(qn, connection)
+            return super(SalesforceWhereNode, self).as_sql(compiler, connection)
+        soql_trans = compiler.query_topology()
+        # *** patch 1 end
 
-        soql_trans = qn.query_topology()
         result = []
         result_params = []
-        everything_childs, nothing_childs = 0, 0
-        non_empty_childs = len(self.children)
+        if self.connector == AND:
+            full_needed, empty_needed = len(self.children), 1
+        else:
+            full_needed, empty_needed = 1, len(self.children)
 
         for child in self.children:
             try:
-                assert hasattr(child, 'as_sql')
-                sql, params = qn.compile(child)
+                sql, params = compiler.compile(child)
             except EmptyResultSet:
-                nothing_childs += 1
+                empty_needed -= 1
             else:
                 if sql:
+
+                    # *** patch 2 (add) begin
+                    # # translate the alias of child to SOQL name
                     x_match = re.match(r'(\w+)\.(.*)', sql)
                     if x_match:
                         x_table, x_field = x_match.groups()
                         sql = '%s.%s' % (soql_trans[x_table], x_field)
                         # print('sql params:', sql, params)
+                    # *** patch 2 end
+
                     result.append(sql)
                     result_params.extend(params)
                 else:
-                    if sql is None:
-                        # Skip empty childs totally.
-                        non_empty_childs -= 1
-                        continue
-                    everything_childs += 1
+                    full_needed -= 1
             # Check if this node matches nothing or everything.
             # First check the amount of full nodes and empty nodes
             # to make this node empty/full.
-            if self.connector == AND:
-                full_needed, empty_needed = non_empty_childs, 1
-            else:
-                full_needed, empty_needed = 1, non_empty_childs
             # Now, check if this node is full/empty using the
             # counts.
-            if empty_needed - nothing_childs <= 0:
+            if empty_needed == 0:
                 if self.negated:
                     return '', []
                 else:
                     raise EmptyResultSet
-            if full_needed - everything_childs <= 0:
+            if full_needed == 0:
                 if self.negated:
                     raise EmptyResultSet
                 else:
                     return '', []
-
-        if non_empty_childs == 0:
-            # All the child nodes were empty, so this one is empty, too.
-            return None, []
         conn = ' %s ' % self.connector
         sql_string = conn.join(result)
         if sql_string:
             if self.negated:
-                # patch begin
-                # SOQL requires parentheses around "NOT" if combined with AND/OR
+                # *** patch 3 (remove) begin
+                # # Some backends (Oracle at least) need parentheses
+                # # around the inner SQL in the negated case, even if the
+                # # inner SQL contains just a single expression.
                 # sql_string = 'NOT (%s)' % sql_string
+                # *** patch 3 (add)
+                # SOQL requires parentheses around "NOT" expression, if combined with AND/OR
                 sql_string = '(NOT (%s))' % sql_string
-                # patch end
-            elif len(result) > 1:
+                # *** patch 3 end
+
+            # *** patch 4 (combine two versions into one compatible) begin
+            # elif len(result) > 1:                                    # Django 1.10, 1.11
+            # elif len(result) > 1 or self.resolved:                   # Django 2.0, 2.1
+            elif len(result) > 1 or getattr(self, 'resolved', False):  # compatible code
+                # *** patch 4 end
+
                 sql_string = '(%s)' % sql_string
         return sql_string, result_params
     # pylint:enable=no-else-return,too-many-branches,too-many-locals,unused-argument
@@ -391,18 +389,8 @@ class SalesforceWhereNode(sql_where.WhereNode):
             data = IsNull(data.lhs, data.rhs)
         return super(SalesforceWhereNode, self).add(data, conn_type, squash=squash)
 
-    as_salesforce = as_sql
-    del as_sql
 
-#   def as_salesforce(self, qn, connection):
-#       import pprint
-#       print('join_map:')
-#       pprint.PrettyPrinter(width=80).pprint(qn.query.join_map)
-#       import pdb; pdb.set_trace()
-#       return self.as_sql(qn, connection)
-
-
-class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
+class SQLInsertCompiler(sql_compiler.SQLInsertCompiler, SQLCompiler):
     def execute_sql(self, return_id=False):
         # copied from Django 1.11, except one line patch
         assert not (
@@ -428,13 +416,13 @@ class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
         return super(SQLInsertCompiler, self).execute_sql(return_id)
 
 
-class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
+class SQLDeleteCompiler(sql_compiler.SQLDeleteCompiler, SQLCompiler):
     pass
 
 
-class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
+class SQLUpdateCompiler(sql_compiler.SQLUpdateCompiler, SQLCompiler):
     pass
 
 
-class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
+class SQLAggregateCompiler(sql_compiler.SQLAggregateCompiler, SQLCompiler):
     pass
