@@ -9,14 +9,12 @@
 Generate queries using the SOQL dialect.  (like django.db.models.sql.compiler and  django.db.models.sql.where)
 """
 import re
-from django.db import models
 from django.db.models.sql import compiler as sql_compiler, where as sql_where, constants, AND
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.transaction import TransactionManagementError
 
+import salesforce.backend.models_lookups   # required for activation of lookups
 from salesforce.dbapi.driver import DatabaseError
-from salesforce.backend.models_lookups import IsNull
-import salesforce
 
 # pylint:no-else-return,too-many-branches,too-many-locals
 
@@ -378,16 +376,6 @@ class SalesforceWhereNode(sql_where.WhereNode):
                 sql_string = '(%s)' % sql_string
         return sql_string, result_params
     # pylint:enable=no-else-return,too-many-branches,too-many-locals,unused-argument
-
-    def add(self, data, conn_type, squash=True):
-        # The filter lookup `isnull` is very special and can not be
-        # replaced only by `models.Field.register_lookup`. Otherwise the
-        # register_lookup is preferred.
-        cond = isinstance(data, models.lookups.IsNull) and not isinstance(data, IsNull)
-        if cond:
-            # "lhs" and "rhs" means Left and Right Hand Side of an condition
-            data = IsNull(data.lhs, data.rhs)
-        return super(SalesforceWhereNode, self).add(data, conn_type, squash=squash)
 
 
 class SQLInsertCompiler(sql_compiler.SQLInsertCompiler, SQLCompiler):
