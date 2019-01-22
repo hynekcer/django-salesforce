@@ -12,11 +12,13 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.db.models.sql import subqueries, Query, RawQuery
-from django.utils.six import PY3, text_type
+from django.utils.six import text_type
 
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
-from salesforce.dbapi.driver import handle_api_exceptions, rest_api_url, DatabaseError
+from salesforce.dbapi.driver import (
+    handle_api_exceptions, rest_api_url, DatabaseError,
+    register_conversion, arg_to_soql, arg_to_json, SALESFORCE_DATETIME_FORMAT)
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
 import salesforce.dbapi.driver
 
@@ -29,47 +31,9 @@ log = logging.getLogger(__name__)
 
 # pylint:disable=invalid-name
 
-# Values of seconds are with 3 decimal places in SF, but they are rounded to
-# whole seconds for the most of fields.
-SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
 
 MIGRATIONS_QUERY_TO_BE_IGNORED = "SELECT django_migrations.app, django_migrations.name FROM django_migrations"
-
-
-def quoted_string_literal(s):
-    """
-    SOQL requires single quotes to be escaped.
-    http://www.salesforce.com/us/developer/docs/soql_sosl/Content/sforce_api_calls_soql_select_quotedstringescapes.htm
-    """
-    try:
-        return "'%s'" % (s.replace("\\", "\\\\").replace("'", "\\'"),)
-    except TypeError:
-        raise NotImplementedError("Cannot quote %r objects: %r" % (type(s), s))
-
-
-def arg_to_soql(arg):
-    """
-    Perform necessary SOQL quoting on the arg.
-    """
-    if isinstance(arg, models.Model):
-        assert arg._salesforce_object  # pylint:disable=protected-access
-        return sql_conversions[type(arg)](arg)
-    if isinstance(arg, decimal.Decimal):
-        return sql_conversions[decimal.Decimal](arg)
-    return sql_conversions.get(type(arg), sql_conversions[str])(arg)
-
-
-def arg_to_sf(arg):
-    """
-    Perform necessary JSON conversion on the arg.
-    """
-    if isinstance(arg, models.Model):
-        assert arg._salesforce_object  # pylint:disable=protected-access
-        return json_conversions[type(arg)](arg)
-    if isinstance(arg, decimal.Decimal):
-        return json_conversions[decimal.Decimal](arg)
-    return json_conversions.get(type(arg), json_conversions[str])(arg)
 
 
 def prep_for_deserialize_inner(model, record, init_list=None):
@@ -180,7 +144,7 @@ def extract_values_inner(row, query):
                 continue
         if isinstance(value, DefaultedOnCreate):
             continue
-        d[field.column] = arg_to_sf(value)
+        d[field.column] = arg_to_json(value)
     return d
 
 
@@ -246,6 +210,7 @@ class CursorWrapper(object):
                                   for x in data['compositeResponse']]
                 return
             elif data['hasErrors'] is False:
+                # it is from Composite Batch request
                 # save id from bulk_create even if Django don't use it
                 if data['results'] and data['results'][0]['result']:
                     self.lastrowid = [item['result']['id'] for item in data['results']]
@@ -521,48 +486,9 @@ def str_dict(some_dict):
     return {str(k): str(v) for k, v in some_dict.items()}
 
 
-def date_literal(d):
-    if not d.tzinfo:
-        import time
-        tz = pytz.timezone(settings.TIME_ZONE)
-        d = tz.localize(d, is_dst=time.daylight)
-    # Format of `%z` is "+HHMM"
-    tzname = datetime.datetime.strftime(d, "%z")
-    return datetime.datetime.strftime(d, "%Y-%m-%dT%H:%M:%S.000") + tzname
-
-
 def sobj_id(obj):
+    assert obj._salesforce_object  # pylint:disable=protected-access
     return obj.pk
 
 
-# supported types converted from Python to SFDC
-
-# conversion before conversion to json (for Insert and Update commands)
-json_conversions = {
-    int: str,
-    float: lambda o: '%.15g' % o,
-    type(None): lambda s: None,
-    str: lambda o: o,  # default
-    bool: lambda s: str(s).lower(),
-    datetime.date: lambda d: datetime.date.strftime(d, "%Y-%m-%d"),
-    datetime.datetime: date_literal,
-    datetime.time: lambda d: datetime.time.strftime(d, "%H:%M:%S.%f"),
-    decimal.Decimal: float,
-    models.Model: sobj_id,
-}
-if not PY3:
-    if False:                          # pylint:disable=using-constant-test  # fix static analysis for Python 2
-        long, unicode = long, unicode  # NOQA pylint:disable=used-before-assignment
-
-    json_conversions[long] = str
-
-# conversion before formating a SOQL (for Select commands)
-sql_conversions = json_conversions.copy()
-sql_conversions.update({
-    type(None): lambda s: 'NULL',
-    str: quoted_string_literal,  # default
-})
-
-if not PY3:
-    sql_conversions[unicode] = lambda s: quoted_string_literal(s.encode('utf8'))
-    json_conversions[unicode] = lambda s: s.encode('utf8')
+register_conversion(models.Model, json_conv=sobj_id, subclass=True)

@@ -6,16 +6,20 @@ should be independent on Django.db
 and if possible should be independent on django.conf.settings
 Code at lower level than DB API should be also here.
 """
+import datetime
+import decimal
 import logging
 import socket
+import types
 
+import pytz
 import requests
 
 import salesforce
 from salesforce.dbapi import settings  # i.e. django.conf.settings
 from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
-    InternalError, ProgrammingError, NotSupportedError, SalesforceError)
+    InternalError, ProgrammingError, NotSupportedError, SalesforceError, PY3)
 
 try:
     import beatbox  # pylint: disable=unused-import
@@ -32,10 +36,14 @@ paramstyle = 'format'
 
 API_STUB = '/services/data/v35.0'
 
+# Values of seconds are with 3 decimal places in SF, but they are rounded to
+# whole seconds for the most of fields.
+SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
+
 request_count = 0  # global counter
 
 
-class Connection(object):
+class RawConnection(object):
     # close and commit can be safely ignored because everything is
     # committed automatically and REST is stateles.
 
@@ -48,6 +56,9 @@ class Connection(object):
 
     def rollback(self):
         log.info("Rollback is not implemented.")
+
+
+Connection = RawConnection
 
 
 # DB API function
@@ -157,3 +168,92 @@ def handle_api_exceptions(url, session_method, *args, **kwargs):
     # some kind of failed query
     else:
         raise SalesforceError('%s' % data, data, response, verbose)
+
+
+# ----
+
+# basic conversions
+
+
+def register_conversion(type_, json_conv, sql_conv=None, subclass=False):
+    json_conversions[type_] = json_conv
+    sql_conversions[type_] = sql_conv or json_conv
+    if subclass and type_ not in subclass_conversions:
+        subclass_conversions.append(type_)
+
+
+def quoted_string_literal(txt):
+    """
+    SOQL requires single quotes to be escaped.
+    http://www.salesforce.com/us/developer/docs/soql_sosl/Content/sforce_api_calls_soql_select_quotedstringescapes.htm
+    """
+    try:
+        return "'%s'" % (txt.replace("\\", "\\\\").replace("'", "\\'"),)
+    except TypeError:
+        raise NotImplementedError("Cannot quote %r objects: %r" % (type(txt), txt))
+
+
+def date_literal(dat):
+    if not dat.tzinfo:
+        import time
+        tz = pytz.timezone(settings.TIME_ZONE)
+        dat = tz.localize(dat, is_dst=time.daylight)
+    # Format of `%z` is "+HHMM"
+    tzname = datetime.datetime.strftime(dat, "%z")
+    return datetime.datetime.strftime(dat, "%Y-%m-%dT%H:%M:%S.000") + tzname
+
+
+def arg_to_soql(arg):
+    """
+    Perform necessary SOQL quoting on the arg.
+    """
+    conversion = sql_conversions.get(type(arg))
+    if conversion:
+        return conversion(arg)
+    for type_ in subclass_conversions:
+        if isinstance(arg, type_):
+            return sql_conversions[type_](arg)
+    return sql_conversions[str](arg)
+
+
+def arg_to_json(arg):
+    """
+    Perform necessary JSON conversion on the arg.
+    """
+    conversion = json_conversions.get(type(arg))
+    if conversion:
+        return conversion(arg)
+    for type_ in subclass_conversions:
+        if isinstance(arg, type_):
+            return json_conversions[type_](arg)
+    return json_conversions[str](arg)
+
+
+# supported types converted from Python to SFDC
+
+# conversion before conversion to json (for Insert and Update commands)
+json_conversions = {}
+
+# conversion before formating a SOQL (for Select commands)
+sql_conversions = {}
+
+subclass_conversions = []
+
+# pylint:disable=bad-whitespace,no-member
+register_conversion(int,             json_conv=str)
+register_conversion(float,           json_conv=lambda o: '%.15g' % o)
+register_conversion(type(None),      json_conv=lambda s: None,          sql_conv=lambda s: 'NULL')
+register_conversion(str,             json_conv=lambda o: o,             sql_conv=quoted_string_literal)  # default
+register_conversion(bool,            json_conv=lambda s: str(s).lower())
+register_conversion(datetime.date,   json_conv=lambda d: datetime.date.strftime(d, "%Y-%m-%d"))
+register_conversion(datetime.datetime, json_conv=date_literal)
+register_conversion(datetime.time,   json_conv=lambda d: datetime.time.strftime(d, "%H:%M:%S.%f"))
+register_conversion(decimal.Decimal, json_conv=float, subclass=True)
+# the type models.Model is registered from backend, because it is a Django type
+
+if not PY3:
+    register_conversion(types.LongType, json_conv=str)
+    register_conversion(types.UnicodeType,
+                        json_conv=lambda s: s.encode('utf8'),
+                        sql_conv=lambda s: quoted_string_literal(s.encode('utf8')))
+# pylint:enable=bad-whitespace,no-member
