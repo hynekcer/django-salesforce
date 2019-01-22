@@ -10,12 +10,18 @@ import datetime
 import decimal
 import logging
 import socket
+import sys
+import threading
 import types
+import warnings
 
 import pytz
 import requests
+from requests.adapters import HTTPAdapter
 
 import salesforce
+from salesforce.auth import SalesforcePasswordAuth
+from salesforce.dbapi import get_max_retries
 from salesforce.dbapi import settings  # i.e. django.conf.settings
 from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
@@ -42,10 +48,49 @@ SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 
 request_count = 0  # global counter
 
+connect_lock = threading.Lock()
+
 
 class RawConnection(object):
-    # close and commit can be safely ignored because everything is
-    # committed automatically and REST is stateles.
+    """
+    parameters:
+        settings_dict:  like settings.SADABASES['salesforce'] in Django
+        alias:          important if the authentication should be shared for more thread
+        errorhandler: function with following signature
+            ``errorhandler(connection, cursor, errorclass, errorvalue)``
+        use_introspection: bool
+    """
+
+    Error = Error
+    InterfaceError = InterfaceError
+    DatabaseError = DatabaseError
+    DataError = DataError
+    OperationalError = OperationalError
+    IntegrityError = IntegrityError
+    InternalError = InternalError
+    ProgrammingError = ProgrammingError
+    NotSupportedError = NotSupportedError
+
+    def __init__(self, settings_dict, alias=None, errorhandler=None, use_introspection=None):
+        self.alias = alias
+        self.errorhandler = errorhandler
+        self.use_introspection = use_introspection if use_introspection is not None else True  # TODO
+        self.settings_dict = settings_dict
+
+        self._sf_session = None
+
+        if errorhandler:
+            warnings.warn("DB-API extension errorhandler used")
+            # TODO implement it by a context manager around handle_api_exceptions (+ this warning)
+            raise NotSupportedError
+
+        # The SFDC database is connected as late as possible if only tests
+        # are running. Some tests don't require a connection.
+        if not getattr(settings, 'SF_LAZY_CONNECT', 'test' in sys.argv):  # TODO don't use argv
+            self.make_session()
+
+    # Methods close() and commit() can be safely ignored, because everything is
+    # committed automatically and the REST API is stateless.
 
     # pylint:disable=no-self-use
     def close(self):
@@ -57,13 +102,35 @@ class RawConnection(object):
     def rollback(self):
         log.info("Rollback is not implemented.")
 
+    @property
+    def sf_session(self):
+        if self._sf_session is None:
+            self.make_session()
+        return self._sf_session
+
+    def make_session(self):
+        """Authenticate and get the name of assigned SFDC data server"""
+        with connect_lock:
+            if self._sf_session is None:
+                sf_session = requests.Session()
+                # TODO configurable class Salesforce***Auth
+                sf_session.auth = SalesforcePasswordAuth(db_alias=self.alias,
+                                                         settings_dict=self.settings_dict)
+                sf_instance_url = sf_session.auth.instance_url
+                sf_requests_adapter = HTTPAdapter(max_retries=get_max_retries())
+                sf_session.mount(sf_instance_url, sf_requests_adapter)
+                # Additional header works, but the improvement is immeasurable for
+                # me. (less than SF speed fluctuation)
+                # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'}
+                self._sf_session = sf_session
+
 
 Connection = RawConnection
 
 
 # DB API function
-def connect(**params):  # pylint:disable=unused-argument
-    return Connection()
+def connect(**params):
+    return Connection(**params)
 
 
 # LOW LEVEL

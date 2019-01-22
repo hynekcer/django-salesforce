@@ -9,16 +9,10 @@
 Salesforce database backend for Django.  (like django,db.backends.*.base)
 """
 
-import sys
-import threading
-
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from django.db.backends.base.base import BaseDatabaseWrapper
-import requests
-from requests.adapters import HTTPAdapter
 
-from salesforce.auth import SalesforcePasswordAuth
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.client import DatabaseClient
 from salesforce.backend.creation import DatabaseCreation
@@ -29,7 +23,7 @@ from salesforce.backend.introspection import DatabaseIntrospection
 from salesforce.backend.schema import DatabaseSchemaEditor
 # from django.db.backends.signals import connection_created
 from salesforce.backend.utils import CursorWrapper
-from salesforce.dbapi import get_max_retries, driver as Database
+from salesforce.dbapi import driver as Database
 from salesforce.dbapi.driver import IntegrityError, DatabaseError, SalesforceError  # NOQA pylint:disable=unused-import
 
 try:
@@ -38,8 +32,6 @@ except ImportError:
     from urlparse import urlparse
 
 __all__ = ('DatabaseWrapper', 'DatabaseError', 'SalesforceError',)
-
-connect_lock = threading.Lock()
 
 
 class DatabaseWrapper(BaseDatabaseWrapper):
@@ -95,37 +87,16 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.creation = DatabaseCreation(self)
             self.introspection = DatabaseIntrospection(self)
             self.validation = DatabaseValidation(self)
-        self._sf_session = None
         self._is_sandbox = None
         # debug attributes and test attributes
         self.debug_silent = False
         self.last_chunk_len = None  # uppdated by Cursor class
-        # The SFDC database is connected as late as possible if only tests
-        # are running. Some tests don't require a connection.
-        if not getattr(settings, 'SF_LAZY_CONNECT', 'test' in sys.argv):
-            self.make_session()
-
-    def make_session(self):
-        """Authenticate and get the name of assigned SFDC data server"""
-        with connect_lock:
-            if self._sf_session is None:
-                sf_session = requests.Session()
-                # TODO configurable class Salesforce***Auth
-                sf_session.auth = SalesforcePasswordAuth(db_alias=self.alias,
-                                                         settings_dict=self.settings_dict)
-                sf_instance_url = sf_session.auth.instance_url
-                sf_requests_adapter = HTTPAdapter(max_retries=get_max_retries())
-                sf_session.mount(sf_instance_url, sf_requests_adapter)
-                # Additional header works, but the improvement is immeasurable for
-                # me. (less than SF speed fluctuation)
-                # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'}
-                self._sf_session = sf_session
 
     @property
     def sf_session(self):
-        if self._sf_session is None:
-            self.make_session()
-        return self._sf_session
+        if self.connection is None:
+            self.connect()
+        return self.connection.sf_session
 
     def get_connection_params(self):
         settings_dict = self.settings_dict
@@ -135,7 +106,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def get_new_connection(self, conn_params):
         # only simulated a connection interface without connecting really
-        return Database.connect(**conn_params)
+        return Database.connect(settings_dict=conn_params, alias=self.alias)
 
     def init_connection_state(self):
         pass  # nothing to init
