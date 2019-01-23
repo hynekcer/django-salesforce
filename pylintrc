@@ -63,7 +63,7 @@ disable=
     fixme,  # only the "TODO" word is used
     missing-docstring,
     useless-object-inheritance,  # class ...(object):  due to Python2 compatibility
-    no-else-return, inconsistent-return-statements,  # similar style to Django
+    inconsistent-return-statements,  # similar style to Django
 
 
 [REPORTS]

@@ -133,6 +133,7 @@ def handle_api_exceptions(url, session_method, *args, **kwargs):
         # Errors are reported in the body
         data = response.json()[0]
     if response.status_code == 404:  # ResourceNotFound
+        # pylint:disable=no-else-return
         if (session_method.__func__.__name__ == 'delete') and data['errorCode'] in (
                 'ENTITY_IS_DELETED', 'INVALID_CROSS_REFERENCE_KEY'):
             # It is a delete command and the object is in trash bin or

@@ -68,13 +68,8 @@ class SalesforceAutoField(fields.AutoField):
                 "with the name '%s' (configurable by settings)." % SF_PK)
         if cls._meta.auto_field:
             # pylint:disable=unidiomatic-typecheck
-            if (type(self) == type(cls._meta.auto_field) and self.model._meta.abstract and  # NOQA type eq
+            if not (type(self) == type(cls._meta.auto_field) and self.model._meta.abstract and  # NOQA type eq
                     cls._meta.auto_field.name == SF_PK):
-                # A model is created  that inherits fields from more abstract classes
-                # with the same default SalesforceAutoFieldy. Therefore the second should be
-                # ignored.
-                return
-            else:
                 raise ImproperlyConfigured(
                     "The model %s can not have more than one AutoField, "
                     "but currently: (%s=%s, %s=%s)" % (
@@ -83,6 +78,10 @@ class SalesforceAutoField(fields.AutoField):
                         name, self
                     )
                 )
+            # A model is created  that inherits fields from more abstract classes
+            # with the same default SalesforceAutoFieldy. Therefore the second should be
+            # ignored.
+            return
         super(SalesforceAutoField, self).contribute_to_class(cls, name, **kwargs)
         cls._meta.auto_field = self
 
@@ -223,8 +222,7 @@ class BooleanField(SfField, models.BooleanField):
     def to_python(self, value):
         if isinstance(value, DefaultedOnCreate):
             return value
-        else:
-            return super(BooleanField, self).to_python(value)
+        return super(BooleanField, self).to_python(value)
 
 
 class DateTimeField(SfField, models.DateTimeField):
@@ -260,7 +258,7 @@ class ForeignKey(SfField, models.ForeignKey):
         super(ForeignKey, self).__init__(to, on_delete, *args, **kwargs)
 
     def get_attname(self):
-        if self.name.islower():
+        if self.name.islower():  # pylint:disable=no-else-return
             # the same as django.db.models.fields.related.ForeignKey.get_attname
             return '%s_id' % self.name
         else:

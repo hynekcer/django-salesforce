@@ -107,16 +107,15 @@ class SalesforceAuth(AuthBase):
         """
         if self.dynamic:
             return self.dynamic
-        elif self.settings_dict['USER'] == 'dynamic auth':
+        if self.settings_dict['USER'] == 'dynamic auth':
             return {'instance_url': self.settings_dict['HOST']}
-        else:
-            # If another thread is running inside this method, wait for it to
-            # finish. Always release the lock no matter what happens in the block
-            db_alias = self.db_alias
-            with oauth_lock:
-                if db_alias not in oauth_data:
-                    oauth_data[db_alias] = self.authenticate()
-                return oauth_data[db_alias]
+        # If another thread is running inside this method, wait for it to
+        # finish. Always release the lock no matter what happens in the block
+        db_alias = self.db_alias
+        with oauth_lock:
+            if db_alias not in oauth_data:
+                oauth_data[db_alias] = self.authenticate()
+            return oauth_data[db_alias]
 
     def del_token(self):
         with oauth_lock:
@@ -130,14 +129,13 @@ class SalesforceAuth(AuthBase):
         return r
 
     def reauthenticate(self):
-        if self.dynamic is None:
-            self.del_token()
-            return self.get_auth()['access_token']
-        else:
+        if self.dynamic is not None:
             # It is expected that with dynamic authentication we get a token that
             # is valid at least for a few future seconds, because we don't get
             # any password or permanent permission for it from the user.
             raise DatabaseError("Dynamically authenticated connection can never reauthenticate.")
+        self.del_token()
+        return self.get_auth()['access_token']
 
     @property
     def instance_url(self):

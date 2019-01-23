@@ -18,9 +18,8 @@ def is_sf_database(db, model=None):
     from django.db import connections
     if db is None:
         return getattr(model, '_salesforce_object', False)
-    else:
-        engine = connections[db].settings_dict['ENGINE']
-        return engine == 'salesforce.backend' or connections[db].vendor == 'salesforce'
+    engine = connections[db].settings_dict['ENGINE']
+    return engine == 'salesforce.backend' or connections[db].vendor == 'salesforce'
 
 
 class ModelRouter(object):

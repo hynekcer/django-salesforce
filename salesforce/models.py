@@ -173,14 +173,13 @@ def make_dynamic_fields(pattern_module, dynamic_field_patterns, attrs):
                 break
     else:
         # not found db_table model, but decide between warning or exception
-        if all(x.startswith('__') for x in dir(pattern_module)):
-            warnings.warn("The module '%s' is empty. (It is OK if you are "
-                          "rewriting new Models by pipe from inspectdb command.)"
-                          % pattern_module.__name__)
-            return
-        else:
+        if any(not x.startswith('__') for x in dir(pattern_module)):
             raise RuntimeError("No Model for table '%s' found in the module '%s'"
                                % (db_table, pattern_module.__name__))
+        warnings.warn("The module '%s' is empty. (It is OK if you are "
+                      "rewriting new Models by pipe from inspectdb command.)"
+                      % pattern_module.__name__)
+        return
     lazy_fields = [(name, obj) for name, obj in vars(cls).items()
                    if isinstance(obj, LazyField) and issubclass(obj.klass, SfField)
                    ]

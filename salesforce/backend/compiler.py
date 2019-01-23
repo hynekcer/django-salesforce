@@ -18,7 +18,7 @@ from salesforce.dbapi.driver import DatabaseError
 from salesforce.backend.models_lookups import IsNull
 import salesforce
 
-# pylint:too-many-branches,too-many-locals
+# pylint:no-else-return,too-many-branches,too-many-locals
 
 
 class SQLCompiler(compiler.SQLCompiler):
@@ -52,6 +52,7 @@ class SQLCompiler(compiler.SQLCompiler):
         self.quote_cache[name] = r
         return r
 
+    # patched and simplified the parend method  # pylint:disable=no-else-return
     def execute_sql(self, result_type=constants.MULTI, chunked_fetch=False,
                     chunk_size=constants.GET_ITERATOR_CHUNK_SIZE):
         """
@@ -94,6 +95,7 @@ class SQLCompiler(compiler.SQLCompiler):
             # before going any further. Use chunked_fetch if requested.
             return list(result)
         return result
+        # pylint:enable=no-else-return
 
     def as_sql(self, with_limits=True, with_col_aliases=False, subquery=False):  # pylint:disable=arguments-differ
         # the argument `subquery` is only for old Django 1.10
@@ -293,8 +295,8 @@ class SalesforceWhereNode(sql_where.WhereNode):
     # TODO compare, how much it is updated to 1.7
     # TODO though there is no problem, update to Django 1.8 - 1.10!
     # patched "django.db.models.sql.where.WhereNode.as_sql" from Django 1.5, 1.6., 1.7
+    # pylint:disable=no-else-return,too-many-branches,too-many-locals,unused-argument
     def as_sql(self, qn, connection):  # pylint:disable=arguments-differ
-        # pylint:disable=too-many-locals,too-many-branches
         """
         Returns the SQL version of the where clause and the value to be
         substituted in. Returns '', [] if this node matches everything,
@@ -376,6 +378,7 @@ class SalesforceWhereNode(sql_where.WhereNode):
             elif len(result) > 1:
                 sql_string = '(%s)' % sql_string
         return sql_string, result_params
+    # pylint:enable=no-else-return,too-many-branches,too-many-locals,unused-argument
 
     def add(self, data, conn_type, squash=True):
         # The filter lookup `isnull` is very special and can not be

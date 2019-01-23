@@ -1,6 +1,7 @@
 """
 Lookups  (like django.db.models.lookups, django.db.models.aggregates.Count)
 """
+# pylint:disable=no-else-return
 from django.db import models
 import django.db.models.aggregates
 

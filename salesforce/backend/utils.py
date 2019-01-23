@@ -139,15 +139,16 @@ def extract_values(query):
     Extract values from insert or update query.
     Supports bulk_create
     """
+    # pylint
     if isinstance(query, subqueries.UpdateQuery):
         row = query.values
         return extract_values_inner(row, query)
-    else:
-        assert isinstance(query, subqueries.InsertQuery)
+    if isinstance(query, subqueries.InsertQuery):
         ret = []
         for row in query.objs:
             ret.append(extract_values_inner(row, query))
         return ret
+    raise NotImplementedError
 
 
 def extract_values_inner(row, query):
@@ -293,15 +294,14 @@ class CursorWrapper(object):
         if q != MIGRATIONS_QUERY_TO_BE_IGNORED:
             # normal query
             return handle_api_exceptions(url, self.session.get, _cursor=self)
-        else:
-            # Nothing queried about django_migrations to SFDC and immediately responded that
-            # nothing about migration status is recorded in SFDC.
-            #
-            # That is required by "makemigrations" to accept this query.
-            # Empty results are possible.
-            # (It could be eventually replaced by: "SELECT app__c, Name FROM django_migrations__c")
-            self.results = iter([])
-            return
+        # Nothing queried about django_migrations to SFDC and immediately responded that
+        # nothing about migration status is recorded in SFDC.
+        #
+        # That is required by "makemigrations" to accept this query.
+        # Empty results are possible.
+        # (It could be eventually replaced by: "SELECT app__c, Name FROM django_migrations__c")
+        self.results = iter([])
+        return
 
     def query_more(self, nextRecordsUrl):
         url = u'%s%s' % (self.session.auth.instance_url, nextRecordsUrl)
@@ -348,19 +348,19 @@ class CursorWrapper(object):
                 if child.lookup_name == 'exact':
                     assert isinstance(pks, text_type)
                     return [pks]
-                else:  # lookup_name 'in'
-                    assert not child.bilateral_transforms
-                    if isinstance(pks, (tuple, list)):
-                        return pks
-                    if DJANGO_111_PLUS:
-                        assert isinstance(pks, Query) and type(pks).__name__ == 'SalesforceQuery'
-                        # # alternative solution:
-                        # return list(salesforce.backend.query.SalesforceQuerySet(pk.model, query=pk, using=pk._db))
+                # lookup_name 'in'
+                assert not child.bilateral_transforms
+                if isinstance(pks, (tuple, list)):
+                    return pks
+                if DJANGO_111_PLUS:
+                    assert isinstance(pks, Query) and type(pks).__name__ == 'SalesforceQuery'
+                    # # alternative solution:
+                    # return list(salesforce.backend.query.SalesforceQuerySet(pk.model, query=pk, using=pk._db))
 
-                        sql, params = pks.get_compiler('salesforce').as_sql()
-                    else:
-                        assert isinstance(pks, salesforce.backend.query.SalesforceQuerySet)
-                        return [x.pk for x in pks]
+                    sql, params = pks.get_compiler('salesforce').as_sql()
+                else:
+                    assert isinstance(pks, salesforce.backend.query.SalesforceQuerySet)
+                    return [x.pk for x in pks]
         if not sql:
             # a subquery is necessary in this case
             where_sql, params = where.as_sql(query.get_compiler('salesforce'), self.db.connection)
@@ -410,29 +410,28 @@ class CursorWrapper(object):
         if not pk:
             self.rowcount = 0
             return
-        elif len(pk) == 1:
+        if len(pk) == 1:
             url = rest_api_url(self.session, 'sobjects', table, pk[0])
             ret = handle_api_exceptions(url, self.session.delete, _cursor=self)
             self.rowcount = 1 if (ret and ret.status_code == 204) else 0
             return ret
-        else:
-            # bulk by REST
-            headers = {'Content-Type': 'application/json'}
-            url = rest_api_url(self.session, 'composite')
-            post_data = {
-                'allOrNone': True,
-                'compositeRequest': [
-                    {
-                        'method': 'DELETE',
-                        'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
-                            salesforce.API_VERSION, table, x),
-                        'referenceId': x,
-                    } for x in pk
-                ]
-            }
-            ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
-                                        _cursor=self)
-            self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
+        # bulk by REST
+        headers = {'Content-Type': 'application/json'}
+        url = rest_api_url(self.session, 'composite')
+        post_data = {
+            'allOrNone': True,
+            'compositeRequest': [
+                {
+                    'method': 'DELETE',
+                    'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
+                        salesforce.API_VERSION, table, x),
+                    'referenceId': x,
+                } for x in pk
+            ]
+        }
+        ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
+                                    _cursor=self)
+        self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
 
     # The following 3 methods (execute_ping, id_request, versions_request)
     # can be renamed soon or moved.

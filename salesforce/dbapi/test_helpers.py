@@ -10,8 +10,7 @@ def expectedFailureIf(condition):
     """Conditional 'expectedFailure' decorator for TestCase"""
     if condition:
         return expectedFailure
-    else:
-        return lambda func: func
+    return lambda func: func
 
 
 class QuietSalesforceErrors(object):
