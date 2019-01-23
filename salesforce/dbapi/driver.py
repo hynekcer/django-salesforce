@@ -186,8 +186,8 @@ def handle_api_exceptions(url, session_method, *args, **kwargs):
     # TODO some timeouts can be rarely raised as "SSLError: The read operation timed out"
     except requests.exceptions.Timeout:
         raise SalesforceError("Timeout, URL=%s" % url)
-    if response.status_code == 401:
-        # Unauthorized (expired or invalid session ID or OAuth)
+    if response.status_code == 401:  # Unauthorized
+        # Reauthenticate and retry (expired or invalid session ID or OAuth)
         data = response.json()[0]
         if data['errorCode'] == 'INVALID_SESSION_ID':
             token = session_method.__self__.auth.reauthenticate()
@@ -198,20 +198,21 @@ def handle_api_exceptions(url, session_method, *args, **kwargs):
             except requests.exceptions.Timeout:
                 raise SalesforceError("Timeout, URL=%s" % url)
 
-    if response.status_code in (200, 201, 204):
+    # status codes help
+    # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
+    if response.status_code <= 304:
+        # OK (200, 201, 204, 300, 304)
         return response
 
+    # Error (400, 403, 404, 405, 415, 500)
     # TODO Remove this verbose setting after tuning of specific messages.
     #      Currently it is better more or less.
-    # http://www.salesforce.com/us/developer/docs/api_rest/Content/errorcodes.htm
     verbose = not getattr(getattr(_cursor, 'db', None), 'debug_silent', False)
     if 'json' not in response.headers.get('Content-Type', ''):
         raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
-    else:
-        # Errors are reported in the body
-        data = response.json()[0]
+    # Other Errors are reported in the json body
+    data = response.json()[0]
     if response.status_code == 404:  # ResourceNotFound
-        # pylint:disable=no-else-return
         if (session_method.__func__.__name__ == 'delete') and data['errorCode'] in (
                 'ENTITY_IS_DELETED', 'INVALID_CROSS_REFERENCE_KEY'):
             # It is a delete command and the object is in trash bin or
@@ -219,11 +220,10 @@ def handle_api_exceptions(url, session_method, *args, **kwargs):
             # then is ignored similarly to delete by a classic database query:
             # DELETE FROM xy WHERE id = 'something_deleted_yet'
             return None
-        else:
-            # if this Id can not be ever valid.
-            raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-                                  % (response.text, url), data, response, verbose
-                                  )
+        # if this Id can not be ever valid.
+        raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
+                              % (response.text, url), data, response, verbose
+                              )
     if data['errorCode'] == 'INVALID_FIELD':
         raise SalesforceError(data['message'], data, response, verbose)
     elif data['errorCode'] == 'MALFORMED_QUERY':
@@ -233,8 +233,7 @@ def handle_api_exceptions(url, session_method, *args, **kwargs):
     elif data['errorCode'] == 'METHOD_NOT_ALLOWED':
         raise SalesforceError('%s: %s' % (url, data['message']), data, response, verbose)
     # some kind of failed query
-    else:
-        raise SalesforceError('%s' % data, data, response, verbose)
+    raise SalesforceError('%s' % data, data, response, verbose)
 
 
 # ----
