@@ -26,9 +26,8 @@ Unsupported methost are currently: values(), values_list(), defer(), only()
 and some raw() queries. (All fixed in a development repository, waiting for review,
 consensus etc.)
 
-Pre-2.7.9 Python versions don't have the required TLS 1.1+ support required
-by Salesforce. PyPy versions compatible with supported Python versions are
-also supported.
+Pre-2.7.9 Python versions don't support the protocol TLS 1.1+ required
+by Salesforce. New PyPy versions compatible with TLS 1.1+ are supported also.
 
 Quick Start
 -----------
