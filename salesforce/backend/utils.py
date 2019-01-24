@@ -17,7 +17,7 @@ from django.utils.six import text_type
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.dbapi.driver import (
-    handle_api_exceptions, rest_api_url, DatabaseError,
+    DatabaseError,
     register_conversion, arg_to_soql, arg_to_json, SALESFORCE_DATETIME_FORMAT)
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
 import salesforce.dbapi.driver
@@ -156,6 +156,7 @@ class CursorWrapper(object):
     to the SF REST API
     """
 
+    # pylint:disable=too-many-instance-attributes
     def __init__(self, db):
         """
         Connect to the Salesforce API.
@@ -168,6 +169,7 @@ class CursorWrapper(object):
         self.rowcount = None
         self.first_row = None
         self.lastrowid = None  # TODO move to dbapi.driver
+        self.cursor = self.db.connection.cursor()
 
     def __enter__(self):
         return self
@@ -257,11 +259,11 @@ class CursorWrapper(object):
     def execute_select(self, q, args):
         processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
         service = 'query' if not getattr(self.query, 'is_query_all', False) else 'queryAll'
-        url = rest_api_url(self.session, service, '?' + urlencode(dict(q=processed_sql)))
+        url = self.rest_api_url(service, '?' + urlencode(dict(q=processed_sql)))
         log.debug(processed_sql)
         if q != MIGRATIONS_QUERY_TO_BE_IGNORED:
             # normal query
-            return handle_api_exceptions(url, self.session.get, _cursor=self)
+            return self.handle_api_exceptions('GET', url)
         # Nothing queried about django_migrations to SFDC and immediately responded that
         # nothing about migration status is recorded in SFDC.
         #
@@ -272,8 +274,7 @@ class CursorWrapper(object):
         return
 
     def query_more(self, nextRecordsUrl):
-        url = u'%s%s' % (self.session.auth.instance_url, nextRecordsUrl)
-        return handle_api_exceptions(url, self.session.get, _cursor=self)
+        return self.handle_api_exceptions('GET', nextRecordsUrl)
 
     def execute_insert(self, query):
         table = query.model._meta.db_table
@@ -281,11 +282,11 @@ class CursorWrapper(object):
         post_data = extract_values(query)
         if len(post_data) == 1:
             # single object
-            url = rest_api_url(self.session, 'sobjects', table, '')
+            url = self.rest_api_url('sobjects', table, '')
             post_data = post_data[0]
         else:
             # composite by REST
-            url = rest_api_url(self.session, 'composite')
+            url = self.rest_api_url('composite')
             post_data = {
                 'allOrNone': True,
                 'compositeRequest': [
@@ -300,7 +301,7 @@ class CursorWrapper(object):
             }
 
         log.debug('INSERT %s%s', table, post_data)
-        return handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data), _cursor=self)
+        return self.handle_api_exceptions('POST', url, headers=headers, data=json.dumps(post_data))
 
     def get_pks_from_query(self, query):
         """Prepare primary keys for update and delete queries"""
@@ -347,12 +348,11 @@ class CursorWrapper(object):
             return
         if len(pks) == 1:
             # single request
-            url = rest_api_url(self.session, 'sobjects', table, pks[0])
-            ret = handle_api_exceptions(url, self.session.patch, headers=headers, data=json.dumps(post_data),
-                                        _cursor=self)
+            url = self.rest_api_url('sobjects', table, pks[0])
+            ret = self.handle_api_exceptions('PATCH', url, headers=headers, data=json.dumps(post_data))
         else:
             # composite by REST
-            url = rest_api_url(self.session, 'composite')
+            url = self.rest_api_url('composite')
             post_data = {
                 'allOrNone': True,
                 'compositeRequest': [
@@ -365,8 +365,7 @@ class CursorWrapper(object):
                     } for x in pks
                 ]
             }
-            ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
-                                        _cursor=self)
+            ret = self.handle_api_exceptions('POST', url, headers=headers, data=json.dumps(post_data))
         self.rowcount = 1
         return ret
 
@@ -379,13 +378,11 @@ class CursorWrapper(object):
             self.rowcount = 0
             return
         if len(pk) == 1:
-            url = rest_api_url(self.session, 'sobjects', table, pk[0])
-            ret = handle_api_exceptions(url, self.session.delete, _cursor=self)
+            ret = self.handle_api_exceptions('DELETE', 'sobjects', table, pk[0])
             self.rowcount = 1 if (ret and ret.status_code == 204) else 0
             return ret
         # bulk by REST
         headers = {'Content-Type': 'application/json'}
-        url = rest_api_url(self.session, 'composite')
         post_data = {
             'allOrNone': True,
             'compositeRequest': [
@@ -397,8 +394,7 @@ class CursorWrapper(object):
                 } for x in pk
             ]
         }
-        ret = handle_api_exceptions(url, self.session.post, headers=headers, data=json.dumps(post_data),
-                                    _cursor=self)
+        ret = self.handle_api_exceptions('POST', 'composite', headers=headers, data=json.dumps(post_data))
         self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
 
     # The following 3 methods (execute_ping, id_request, versions_request)
@@ -412,25 +408,24 @@ class CursorWrapper(object):
         a lost connection is possible together with token expire in a post
         request (insert).
         """
-        url = rest_api_url(self.session, '')
-        ret = handle_api_exceptions(url, self.session.get, _cursor=self)
+        ret = self.handle_api_exceptions('GET')
         return str_dict(ret.json())
 
     def id_request(self):
         """The Force.com Identity Service (return type dict of text_type)"""
         # https://developer.salesforce.com/page/Digging_Deeper_into_OAuth_2.0_at_Salesforce.com?language=en&language=en#The_Force.com_Identity_Service
+
         if 'id' in self.oauth:
             url = self.oauth['id']
         else:
             # dynamic auth without 'id' parameter
             url = self.urls_request()['identity']
-        ret = handle_api_exceptions(url, self.session.get, _cursor=self)
+        ret = self.handle_api_exceptions('GET', url)  # TODO
         return ret.json()
 
     def versions_request(self):
         """List Available REST API Versions"""
-        url = self.session.auth.instance_url + '/services/data/'
-        ret = handle_api_exceptions(url, self.session.get, _cursor=self)
+        ret = self.handle_api_exceptions('GET', api_ver='')
         return [str_dict(x) for x in ret.json()]
 
     def query_results(self, results):
@@ -479,6 +474,12 @@ class CursorWrapper(object):
 
     def close(self):
         pass
+
+    def rest_api_url(self, *url_parts, **kwargs):
+        return self.cursor.rest_api_url(*url_parts, **kwargs)  # pylint:disable=no-member  # .cursor
+
+    def handle_api_exceptions(self, method, *url_parts, **kwargs):
+        return self.cursor.handle_api_exceptions(method, *url_parts, **kwargs)  # pylint:disable=no-member  # .cursor
 
 
 def str_dict(some_dict):

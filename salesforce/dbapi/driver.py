@@ -14,6 +14,9 @@ import sys
 import threading
 import types
 import warnings
+import weakref
+from collections import namedtuple
+from itertools import islice
 
 import pytz
 import requests
@@ -34,21 +37,41 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-apilevel = "2.0"
-# threadsafety = ...
+# -- API global constants
 
-# uses '%s' style parameters
+apilevel = "2.0"  # see https://www.python.org/dev/peps/pep-0249
+
+# Every thread should use its own database connection, because waiting
+# on a network connection for query response would be a bottle neck within
+# REST API.
+
+# Two thread-safety models are possible:
+
+# Create the connection by `connect(**params)` if you use it with Django or
+# with another app that has its own thread safe connection pool. and
+# create the connection by connect(**params).
+threadsafety = 1
+
+# Or create and access the connection by `get_connection(alias, **params)`
+# if the pool should be managed by this driver. Then you can expect:
+# threadsafety = 2
+
+
+# This uses '%s' style parameters
 paramstyle = 'format'
 
-API_STUB = '/services/data/v35.0'
+# --- private global constants
 
 # Values of seconds are with 3 decimal places in SF, but they are rounded to
 # whole seconds for the most of fields.
 SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 
+# ---
+
 request_count = 0  # global counter
 
 connect_lock = threading.Lock()
+thread_connections = threading.local()
 
 
 class RawConnection(object):
@@ -79,6 +102,8 @@ class RawConnection(object):
 
         self._sf_session = None
 
+        self._last_used_cursor = None  # weakref.proxy for single thread debugging
+
         if errorhandler:
             warnings.warn("DB-API extension errorhandler used")
             # TODO implement it by a context manager around handle_api_exceptions (+ this warning)
@@ -89,6 +114,8 @@ class RawConnection(object):
         if not getattr(settings, 'SF_LAZY_CONNECT', 'test' in sys.argv):  # TODO don't use argv
             self.make_session()
 
+    # -- public methods
+
     # Methods close() and commit() can be safely ignored, because everything is
     # committed automatically and the REST API is stateless.
 
@@ -97,10 +124,16 @@ class RawConnection(object):
         pass
 
     def commit(self):
+        # "Database modules that do not support transactions should implement
+        # this method with void functionality."
         pass
 
     def rollback(self):
         log.info("Rollback is not implemented.")
+    # pylint:enable=no-self-use
+
+    def cursor(self):
+        return Cursor(self)
 
     @property
     def sf_session(self):
@@ -124,6 +157,17 @@ class RawConnection(object):
                 # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'}
                 self._sf_session = sf_session
 
+    @property
+    def last_used_cursor(self):
+        try:
+            return self._last_used_cursor()  # pylint:disable=not-callable
+        except NameError:
+            return None
+
+    @last_used_cursor.setter
+    def last_used_cursor(self, cursor):
+        self._last_used_cursor = weakref.proxy(cursor)
+
 
 Connection = RawConnection
 
@@ -131,6 +175,131 @@ Connection = RawConnection
 # DB API function
 def connect(**params):
     return Connection(**params)
+
+
+def get_connection(alias, **params):
+    if not hasattr(thread_connections, alias):
+        setattr(thread_connections, alias, connect(alias=alias, **params))
+    return getattr(thread_connections, alias)
+
+
+class Cursor(object):
+
+    # DB API methods  (except private "_*" names)
+
+    def __init__(self, connection):
+        # DB API attributes
+        self.description = None
+        self.rowcount = -1
+        self.lastrowid = None
+        self.messages = []
+        # static
+        self.arraysize = 1
+        # other
+        self.connection = connection
+        self.results = iter(not_executed_yet)
+
+    # .callproc(...)  noit implemented
+
+    def close(self):
+        self.connection = None
+
+    def execute(self, operation, parameters=None):
+        self._clean()
+        sqltype = operation.split(None, 1)[0].upper()
+        _ = sqltype  # NOQA
+        # TODO
+        if sqltype == 'SELECT':
+            self.execute_select(operation, parameters)
+            self.rowcount = 1
+            self.description = ()
+        else:
+            raise ProgrammingError
+
+    def executemany(self, operation, seq_of_parameters):
+        self._clean()
+        for param in seq_of_parameters:
+            self.execute(operation, param)
+
+    def __iter__(self):
+        self._check()
+        for row in self.results:
+            yield row
+
+    def fetchone(self):
+        self._check()
+        return next(self, None)
+
+    def fetchmany(self, size=None):
+        self._check()
+        if size is None:
+            size = self.arraysize
+        return list(islice(self, size))
+
+    def fetchall(self):
+        self._check()
+        return [row for row in self]
+
+    # nextset()  not implemented
+
+    def setinputsizes(self, sizes):
+        pass  # this method is allowed to do nothing
+
+    def setoutputsize(self, size, column=None):
+        pass  # this method is allowed to do nothing
+
+    # private methods
+
+    def err_hand(self, errorclass, errorvalue):
+        "call the errorhandler"
+        self.connection.errorhandler(self.connection, self, errorclass, errorvalue)
+
+    def _check(self):
+        if not self.connection:
+            raise InterfaceError("Cursor Closed")
+        self.connection.last_used_cursor = self  # is a weakref
+
+    def _clean(self):
+        self.description = None
+        self.rowcount = -1
+        self.lastrowid = None
+        del self.messages[:]
+        self.results = iter(not_executed_yet)
+        self._check()
+
+    def execute_select(self, operation, parameters):
+        pass
+
+    def _request(self, method, rel_url, **kwargs):
+        assert method in ('GET', 'POST', 'PATCH', 'DELETE')
+        base = self.connection.session.auth.instance_url
+        url = '{}/{}'.format(base, rel_url)
+        self.connection.session.request(method, url, **kwargs)
+
+
+#                              The first two items are mandatory. (name, type)
+CursorDescription = namedtuple('CursorDescription', 'name type_code '
+                               'display_size internal_size precision scale null_ok')
+CursorDescription.__new__.func_defaults = 7 * (None,)
+
+
+def not_executed_yet():
+    raise Connection.InterfaceError("called fetch...() before execute()")
+    yield  # pylint:disable=unreachable
+
+
+def signalize_extensions():
+    """DB API 2.0 extension are reported by warnings at run-time."""
+    warnings.warn("DB-API extension cursor.rownumber used")
+    warnings.warn("DB-API extension connection.<exception> used")  # TODO
+    warnings.warn("DB-API extension cursor.connection used")
+    # not implemented DB-API extension cursor.scroll()
+    warnings.warn("DB-API extension cursor.messages used")
+    warnings.warn("DB-API extension connection.messages used")
+    warnings.warn("DB-API extension cursor.next() used")
+    warnings.warn("DB-API extension cursor.__iter__() used")
+    warnings.warn("DB-API extension cursor.lastrowid used")
+    warnings.warn("DB-API extension .errorhandler used")
 
 
 # LOW LEVEL
