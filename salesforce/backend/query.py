@@ -9,8 +9,6 @@
 Salesforce object query and queryset customizations.  (like django.db.models.query)
 """
 
-from __future__ import print_function
-
 from django.core.serializers import python
 from django.db import connections
 from django.db.models import query

@@ -5,6 +5,8 @@ without interaction to SF (without migrate)
 """
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
+from salesforce.backend import log
+
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     # pylint:disable=abstract-method  # undefined: prepare_default, quote_value
@@ -33,4 +35,4 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         raise NotImplementedError("Migration SchemaEditor: %r, %r" % (sql, params))
 
     def create_model(self, model):
-        print("Skipped in SchemaEditor: create_model %s" % model)
+        log.info("Skipped in SchemaEditor: create_model %s", model)
