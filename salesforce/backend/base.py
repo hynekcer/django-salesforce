@@ -89,7 +89,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.validation = DatabaseValidation(self)
         self._is_sandbox = None
         # debug attributes and test attributes
-        self.debug_silent = False
         self.last_chunk_len = None  # uppdated by Cursor class
 
     @property

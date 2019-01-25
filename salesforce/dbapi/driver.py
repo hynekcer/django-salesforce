@@ -1,10 +1,11 @@
 """
-Dummy Salesforce driver that simulates some parts of DB API 2
+Dummy Salesforce driver that simulates part of DB API 2.0
 
 https://www.python.org/dev/peps/pep-0249/
-should be independent on Django.db
-and if possible should be independent on django.conf.settings
-Code at lower level than DB API should be also here.
+
+It can run without Django installed, but still Django is the main purpose.
+
+Low level code for Salesforce is also here.
 """
 import datetime
 import decimal
@@ -56,8 +57,11 @@ threadsafety = 1
 # if the pool should be managed by this driver. Then you can expect:
 # threadsafety = 2
 
+# (Both variants allow multitenant architecture with dynamic authentication
+# where a thread can frequently change the organization domain that it serves.)
 
-# This uses '%s' style parameters
+
+# This paramstyle uses '%s' parameters.
 paramstyle = 'format'
 
 # --- private global constants
@@ -83,6 +87,7 @@ class RawConnection(object):
             ``errorhandler(connection, cursor, errorclass, errorvalue)``
         use_introspection: bool
     """
+    # pylint:disable=too-many-instance-attributes
 
     Error = Error
     InterfaceError = InterfaceError
@@ -95,12 +100,17 @@ class RawConnection(object):
     NotSupportedError = NotSupportedError
 
     def __init__(self, settings_dict, alias=None, errorhandler=None, use_introspection=None):
+
+        # private members:
         self.alias = alias
         self.errorhandler = errorhandler
         self.use_introspection = use_introspection if use_introspection is not None else True  # TODO
         self.settings_dict = settings_dict
+        self.messages = []
 
         self._sf_session = None
+        self.api_ver = salesforce.API_VERSION
+        self.debug_silent = False
 
         self._last_used_cursor = None  # weakref.proxy for single thread debugging
 
@@ -135,6 +145,8 @@ class RawConnection(object):
     def cursor(self):
         return Cursor(self)
 
+    # -- private attributes
+
     @property
     def sf_session(self):
         if self._sf_session is None:
@@ -156,6 +168,103 @@ class RawConnection(object):
                 # me. (less than SF speed fluctuation)
                 # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'}
                 self._sf_session = sf_session
+
+    def rest_api_url(self, *url_parts, **kwargs):
+        """Join the URL of REST_API
+
+        parameters:
+            upl_parts:  strings that are joined to the url by "/".
+                a REST url like https://na1.salesforce.com/services/data/v44.0/
+                is usually added, but not if the first string starts with https://
+            api_ver:  API version that should be used instead of connection.api_ver
+                default. A special api_ver="" can be used to omit api version
+                (for request to ask for available api versions)
+        Examples: self.rest_api_url("query?q=select+id+from+Organization")
+                  self.rest_api_url("sobject", "Contact", id, api_ver="45.0")
+                  self.rest_api_url(api_ver="")   # versions request
+        Output:
+
+                  https://na1.salesforce.com/services/data/v44.0/query?q=select+id+from+Organization
+                  https://na1.salesforce.com/services/data/v45.0/sobject/Contact/003DD00000000XYAAA
+                  https://na1.salesforce.com/services/data
+        """
+        if url_parts and url_parts[0].startswith('https://'):
+            return '/'.join(url_parts)
+        api_ver = kwargs.pop('api_ver', None)
+        assert not kwargs
+        api_ver = api_ver if api_ver is not None else self.api_ver
+        base = self.sf_session.auth.instance_url
+        prefix = 'services/data' + ('/v{api_ver}'.format(api_ver=api_ver) if api_ver else '')
+        return '/'.join((base, prefix) + url_parts)
+
+    def handle_api_exceptions(self, method, *url_parts, **kwargs):
+        """Call REST API and handle exceptions
+        Params:
+            method:  'GET', 'POST', 'PATCH' or 'DELETE'
+        """
+        # pylint:disable=too-many-branches
+        global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
+        # The 'verify' option is about verifying SSL certificates
+        api_ver = kwargs.pop('api_ver', None)
+        url = self.rest_api_url(*url_parts, api_ver=api_ver)
+        kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', (4, 15)),
+                     'verify': True}
+        kwargs_in.update(kwargs)
+        log.debug('Request API URL: %s', url)
+        request_count += 1
+        session = self.sf_session
+        try:
+            response = session.request(method, url, **kwargs_in)
+        except requests.exceptions.Timeout:
+            raise SalesforceError("Timeout, URL=%s" % url)
+        if response.status_code == 401:  # Unauthorized
+            # Reauthenticate and retry (expired or invalid session ID or OAuth)
+            data = response.json()[0]
+            if data['errorCode'] == 'INVALID_SESSION_ID':
+                token = session.auth.reauthenticate()
+                if 'headers' in kwargs:
+                    kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
+                try:
+                    response = session.request(method, url, **kwargs_in)
+                except requests.exceptions.Timeout:
+                    raise SalesforceError("Timeout, URL=%s" % url)
+
+        # status codes help
+        # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
+        if response.status_code <= 304:
+            # OK (200, 201, 204, 300, 304)
+            return response
+
+        # Error (400, 403, 404, 405, 415, 500)
+        # TODO Remove this verbose setting after tuning of specific messages.
+        #      Currently it is better more or less.
+        verbose = not self.debug_silent
+        if 'json' not in response.headers.get('Content-Type', ''):
+            raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
+        # Other Errors are reported in the json body
+        data = response.json()[0]
+        if response.status_code == 404:  # ResourceNotFound
+            if (method == 'DELETE') and data['errorCode'] in ('ENTITY_IS_DELETED',
+                                                              'INVALID_CROSS_REFERENCE_KEY'):
+                # It is a delete command and the object is in trash bin or
+                # completely deleted or it only could be a valid Id for this type
+                # then is ignored similarly to delete by a classic database query:
+                # DELETE FROM xy WHERE id = 'something_deleted_yet'
+                return None  # TODO add a warning and add it to messages
+            # if this Id can not be ever valid.
+            raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
+                                  % (response.text, url), data, response, verbose
+                                  )
+        if data['errorCode'] == 'INVALID_FIELD':
+            raise SalesforceError(data['message'], data, response, verbose)
+        elif data['errorCode'] == 'MALFORMED_QUERY':
+            raise SalesforceError(data['message'], data, response, verbose)
+        elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
+            raise SalesforceError(data['message'], data, response, verbose)
+        elif data['errorCode'] == 'METHOD_NOT_ALLOWED':  # 405
+            raise SalesforceError('%s: %s %s' % (data['message'], method, url), data, response, verbose)
+        # some kind of failed query
+        raise SalesforceError('%s' % data, data, response, verbose)
 
     @property
     def last_used_cursor(self):
@@ -184,20 +293,25 @@ def get_connection(alias, **params):
 
 
 class Cursor(object):
+    """Cursor that is almost stateless
 
-    # DB API methods  (except private "_*" names)
+    """
 
+    # pylint:disable=too-many-instance-attributes
     def __init__(self, connection):
-        # DB API attributes
+        # DB API attributes (public, ordered by documentation PEP 249)
         self.description = None
         self.rowcount = -1
-        self.lastrowid = None
-        self.messages = []
-        # static
-        self.arraysize = 1
-        # other
+        self.arraysize = 1  # writable, but ignored finally
+        # db api extensions
+        self.rownumber = None
         self.connection = connection
-        self.results = iter(not_executed_yet)
+        self.messages = []
+        self.lastrowid = None
+        # private
+        self._results = not_executed_yet()
+
+    # -- DB API methods
 
     # .callproc(...)  noit implemented
 
@@ -223,7 +337,7 @@ class Cursor(object):
 
     def __iter__(self):
         self._check()
-        for row in self.results:
+        for row in self._results:
             yield row
 
     def fetchone(self):
@@ -248,7 +362,7 @@ class Cursor(object):
     def setoutputsize(self, size, column=None):
         pass  # this method is allowed to do nothing
 
-    # private methods
+    # -- private methods
 
     def err_hand(self, errorclass, errorvalue):
         "call the errorhandler"
@@ -264,7 +378,7 @@ class Cursor(object):
         self.rowcount = -1
         self.lastrowid = None
         del self.messages[:]
-        self.results = iter(not_executed_yet)
+        self._results = not_executed_yet()
         self._check()
 
     def execute_select(self, operation, parameters):
@@ -317,92 +431,6 @@ if getattr(settings, 'IPV4_ONLY', False) and socket.getaddrinfo.__module__ in ('
     orig_getaddrinfo = socket.getaddrinfo
     # replace the original socket.getaddrinfo by our version
     socket.getaddrinfo = getaddrinfo_wrapper
-
-# ----
-
-
-def rest_api_url(sf_session, service, *args):
-    """Join the URL of REST_API
-
-    Examples: rest_url(sf_session, "query?q=select+id+from+Organization")
-              rest_url(sf_session, "sobject", "Contact", id)
-    """
-    return '{base}/services/data/v{version}/{service}{slash_args}'.format(
-        base=sf_session.auth.instance_url,
-        version=salesforce.API_VERSION,
-        service=service,
-        slash_args=''.join('/' + x for x in args)
-    )
-
-
-def handle_api_exceptions(url, session_method, *args, **kwargs):
-    """Call REST API and handle exceptions
-    Params:
-        session_method:  requests.get or requests.post...
-        _cursor: sharing the debug information in cursor
-    """
-    # pylint:disable=too-many-branches
-    global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
-    # The 'verify' option is about verifying SSL certificates
-    kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', (4, 15)),
-                 'verify': True}
-    kwargs_in.update(kwargs)
-    _cursor = kwargs_in.pop('_cursor', None)
-    log.debug('Request API URL: %s', url)
-    request_count += 1
-    try:
-        response = session_method(url, *args, **kwargs_in)
-    # TODO some timeouts can be rarely raised as "SSLError: The read operation timed out"
-    except requests.exceptions.Timeout:
-        raise SalesforceError("Timeout, URL=%s" % url)
-    if response.status_code == 401:  # Unauthorized
-        # Reauthenticate and retry (expired or invalid session ID or OAuth)
-        data = response.json()[0]
-        if data['errorCode'] == 'INVALID_SESSION_ID':
-            token = session_method.__self__.auth.reauthenticate()
-            if 'headers' in kwargs:
-                kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
-            try:
-                response = session_method(url, *args, **kwargs_in)
-            except requests.exceptions.Timeout:
-                raise SalesforceError("Timeout, URL=%s" % url)
-
-    # status codes help
-    # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
-    if response.status_code <= 304:
-        # OK (200, 201, 204, 300, 304)
-        return response
-
-    # Error (400, 403, 404, 405, 415, 500)
-    # TODO Remove this verbose setting after tuning of specific messages.
-    #      Currently it is better more or less.
-    verbose = not getattr(getattr(_cursor, 'db', None), 'debug_silent', False)
-    if 'json' not in response.headers.get('Content-Type', ''):
-        raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
-    # Other Errors are reported in the json body
-    data = response.json()[0]
-    if response.status_code == 404:  # ResourceNotFound
-        if (session_method.__func__.__name__ == 'delete') and data['errorCode'] in (
-                'ENTITY_IS_DELETED', 'INVALID_CROSS_REFERENCE_KEY'):
-            # It is a delete command and the object is in trash bin or
-            # completely deleted or it only could be a valid Id for this type
-            # then is ignored similarly to delete by a classic database query:
-            # DELETE FROM xy WHERE id = 'something_deleted_yet'
-            return None
-        # if this Id can not be ever valid.
-        raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-                              % (response.text, url), data, response, verbose
-                              )
-    if data['errorCode'] == 'INVALID_FIELD':
-        raise SalesforceError(data['message'], data, response, verbose)
-    elif data['errorCode'] == 'MALFORMED_QUERY':
-        raise SalesforceError(data['message'], data, response, verbose)
-    elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
-        raise SalesforceError(data['message'], data, response, verbose)
-    elif data['errorCode'] == 'METHOD_NOT_ALLOWED':
-        raise SalesforceError('%s: %s' % (url, data['message']), data, response, verbose)
-    # some kind of failed query
-    raise SalesforceError('%s' % data, data, response, verbose)
 
 
 # ----

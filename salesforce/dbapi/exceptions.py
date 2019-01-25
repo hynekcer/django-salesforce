@@ -25,6 +25,11 @@ class SalesforceError(DatabaseError):
     displayed.
     """
     def __init__(self, message='', data=None, response=None, verbose=False):
+        if data:
+            if 'code' in data:
+                message = '{} {}'.format(data['code'], message)
+            if 'fields' in data:
+                message = '{} FIELDS: {}'.format(message, data['fields'])
         DatabaseError.__init__(self, message)
         self.data = data
         self.response = response

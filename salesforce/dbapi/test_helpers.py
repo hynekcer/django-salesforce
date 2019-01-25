@@ -17,16 +17,16 @@ class QuietSalesforceErrors(object):
     """Context manager that helps expected SalesforceErrors to be quiet"""
     def __init__(self, alias):
         self.connection = connections[alias]
+        self.save_debug_silent = None
 
     def __enter__(self):
-        if hasattr(self.connection, 'debug_silent'):
-            self.save_debug_silent = self.connection.debug_silent  # pylint:disable=attribute-defined-outside-init
-            self.connection.debug_silent = True
+        self.save_debug_silent = self.connection.connection.debug_silent
+        self.connection.connection.debug_silent = True
         return self
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         try:
-            self.connection.debug_silent = self.save_debug_silent
+            self.connection.connection.debug_silent = self.save_debug_silent
         except AttributeError:
             pass
 
