@@ -200,13 +200,21 @@ class RawConnection(object):
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
         """Call REST API and handle exceptions
         Params:
-            method:  'GET', 'POST', 'PATCH' or 'DELETE'
+            method:  'HEAD', 'GET', 'POST', 'PATCH' or 'DELETE'
+            url_parts: like in rest_api_url() method
+            api_ver:   like in rest_api_url() method
+            kwargs: other parameters passed to requests.request,
+                but the usual important parameters are only
+                    data=json.dumps(...)
+                    headers={'Content-Type': 'application/json'}
         """
         # pylint:disable=too-many-branches
         global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
-        # The 'verify' option is about verifying SSL certificates
+        assert method in ('HEAD', 'GET', 'POST', 'PATCH', 'DELETE')
         api_ver = kwargs.pop('api_ver', None)
+        cursor_context = kwargs.pop('cursor_context', None)
         url = self.rest_api_url(*url_parts, api_ver=api_ver)
+        # The 'verify' option is about verifying TLS certificates
         kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', (4, 15)),
                      'verify': True}
         kwargs_in.update(kwargs)
@@ -293,8 +301,24 @@ def get_connection(alias, **params):
 
 
 class Cursor(object):
-    """Cursor that is almost stateless
+    """Cursor (local part is simple, remote part is stateless for small result sets)
 
+    From SDFC documentation (combined from SOQL, REST, APEX)
+    Query results are returned from SFDC by blocks of 2000 rows, by default.
+    It is guaranted that the size of result block is not smaller than 200 rows,
+    and not longer than 2000 rows. A remote locator remains open until all rows
+    are consumed. A maximum of 10 open locators per user are allowed, otherwise
+    the oldest locator (cursor) is deleted by SFDC. Query locators older than
+    15 minutes are also deleted. The query locator works without transactions
+    and it should be expected that the data after 2000 rows could affected by
+    later updates and may not match the `where` condition.
+
+    The local part of the cursor is only an index into the last block of 2000
+    rows. The number of local cursors is unrestricted.
+
+    Queries with binary fields Base64 (e.g. attachments) are returned by one row.
+    the best it to get more rows without binary fields and then to query
+    for complete rows, one by one.
     """
 
     # pylint:disable=too-many-instance-attributes
@@ -376,19 +400,17 @@ class Cursor(object):
     def _clean(self):
         self.description = None
         self.rowcount = -1
-        self.lastrowid = None
+        self.rownumber = None
         del self.messages[:]
+        self.lastrowid = None
         self._results = not_executed_yet()
         self._check()
 
     def execute_select(self, operation, parameters):
         pass
 
-    def _request(self, method, rel_url, **kwargs):
-        assert method in ('GET', 'POST', 'PATCH', 'DELETE')
-        base = self.connection.session.auth.instance_url
-        url = '{}/{}'.format(base, rel_url)
-        self.connection.session.request(method, url, **kwargs)
+    def handle_api_exceptions(self, method, *url_parts, **kwargs):
+        return self.connection.handle_api_exceptions(method, *url_parts, cursor_context=self, **kwargs)
 
 
 #                              The first two items are mandatory. (name, type)

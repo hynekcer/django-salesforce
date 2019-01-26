@@ -14,13 +14,13 @@ from django.db import models
 from django.db.models.sql import subqueries, Query, RawQuery
 from django.utils.six import text_type
 
+import salesforce
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.dbapi.driver import (
     DatabaseError,
     register_conversion, arg_to_soql, arg_to_json, SALESFORCE_DATETIME_FORMAT)
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
-import salesforce.dbapi.driver
 
 try:
     from urllib.parse import urlencode
@@ -259,11 +259,11 @@ class CursorWrapper(object):
     def execute_select(self, q, args):
         processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
         service = 'query' if not getattr(self.query, 'is_query_all', False) else 'queryAll'
-        url = self.rest_api_url(service, '?' + urlencode(dict(q=processed_sql)))
+        url_part = '?'.join((service, urlencode(dict(q=processed_sql))))
         log.debug(processed_sql)
         if q != MIGRATIONS_QUERY_TO_BE_IGNORED:
             # normal query
-            return self.handle_api_exceptions('GET', url)
+            return self.handle_api_exceptions('GET', url_part)
         # Nothing queried about django_migrations to SFDC and immediately responded that
         # nothing about migration status is recorded in SFDC.
         #
@@ -282,11 +282,11 @@ class CursorWrapper(object):
         post_data = extract_values(query)
         if len(post_data) == 1:
             # single object
-            url = self.rest_api_url('sobjects', table, '')
+            url_parts = ('sobjects', table, '')
             post_data = post_data[0]
         else:
             # composite by REST
-            url = self.rest_api_url('composite')
+            url_parts = ('composite',)
             post_data = {
                 'allOrNone': True,
                 'compositeRequest': [
@@ -301,7 +301,7 @@ class CursorWrapper(object):
             }
 
         log.debug('INSERT %s%s', table, post_data)
-        return self.handle_api_exceptions('POST', url, headers=headers, data=json.dumps(post_data))
+        return self.handle_api_exceptions('POST', *url_parts, headers=headers, data=json.dumps(post_data))
 
     def get_pks_from_query(self, query):
         """Prepare primary keys for update and delete queries"""
@@ -348,11 +348,10 @@ class CursorWrapper(object):
             return
         if len(pks) == 1:
             # single request
-            url = self.rest_api_url('sobjects', table, pks[0])
-            ret = self.handle_api_exceptions('PATCH', url, headers=headers, data=json.dumps(post_data))
+            url_parts = ('sobjects', table, pks[0])
+            ret = self.handle_api_exceptions('PATCH', *url_parts, headers=headers, data=json.dumps(post_data))
         else:
             # composite by REST
-            url = self.rest_api_url('composite')
             post_data = {
                 'allOrNone': True,
                 'compositeRequest': [
@@ -365,7 +364,7 @@ class CursorWrapper(object):
                     } for x in pks
                 ]
             }
-            ret = self.handle_api_exceptions('POST', url, headers=headers, data=json.dumps(post_data))
+            ret = self.handle_api_exceptions('POST', 'composite', headers=headers, data=json.dumps(post_data))
         self.rowcount = 1
         return ret
 
@@ -475,11 +474,8 @@ class CursorWrapper(object):
     def close(self):
         pass
 
-    def rest_api_url(self, *url_parts, **kwargs):
-        return self.cursor.rest_api_url(*url_parts, **kwargs)  # pylint:disable=no-member  # .cursor
-
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
-        return self.cursor.handle_api_exceptions(method, *url_parts, **kwargs)  # pylint:disable=no-member  # .cursor
+        return self.cursor.handle_api_exceptions(method, *url_parts, **kwargs)
 
 
 def str_dict(some_dict):

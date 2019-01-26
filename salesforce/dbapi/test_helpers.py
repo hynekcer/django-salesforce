@@ -14,7 +14,10 @@ def expectedFailureIf(condition):
 
 
 class QuietSalesforceErrors(object):
-    """Context manager that helps expected SalesforceErrors to be quiet"""
+    """Context manager that helps expected SalesforceErrors to be not logged too verbose.
+
+    It works on the default Salesforce connection. It can be nested.
+    """
     def __init__(self, alias):
         self.connection = connections[alias]
         self.save_debug_silent = None

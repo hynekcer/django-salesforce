@@ -89,7 +89,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def table_list_cache(self):
         if self._table_list_cache is None:
             log.debug('Request API URL: GET sobjects')
-            response = self.connection.handle_api_exceptions('GET', 'sobjects/')
+            response = self.connection.connection.handle_api_exceptions('GET', 'sobjects/')
             # charset is detected from headers by requests package
             self._table_list_cache = response.json(object_pairs_hook=OrderedDict)
             self._table_list_cache['sobjects'] = [
@@ -101,7 +101,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def table_description_cache(self, table):
         if table not in self._table_description_cache:
             log.debug('Request API URL: GET sobjects/%s/describe', table)
-            response = self.connection.handle_api_exceptions('GET', 'sobjects', table, 'describe/')
+            response = self.connection.connection.handle_api_exceptions('GET', 'sobjects', table, 'describe/')
             self._table_description_cache[table] = response.json(object_pairs_hook=OrderedDict)
             assert self._table_description_cache[table]['fields'][0]['type'] == 'id', (
                 "Invalid type of the first field in the table '{}'".format(table))
