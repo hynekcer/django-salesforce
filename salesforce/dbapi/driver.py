@@ -208,7 +208,7 @@ class RawConnection(object):
                     data=json.dumps(...)
                     headers={'Content-Type': 'application/json'}
         """
-        # pylint:disable=too-many-branches
+        # pylint:disable=too-many-branches,too-many-locals
         global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
         assert method in ('HEAD', 'GET', 'POST', 'PATCH', 'DELETE')
         api_ver = kwargs.pop('api_ver', None)
@@ -221,58 +221,65 @@ class RawConnection(object):
         log.debug('Request API URL: %s', url)
         request_count += 1
         session = self.sf_session
+        errorhandler = cursor_context.errorhandler if cursor_context else self.errorhandler
+        catched_exceptions = (SalesforceError, requests.exceptions.RequestException) if errorhandler else ()
         try:
-            response = session.request(method, url, **kwargs_in)
-        except requests.exceptions.Timeout:
-            raise SalesforceError("Timeout, URL=%s" % url)
-        if response.status_code == 401:  # Unauthorized
-            # Reauthenticate and retry (expired or invalid session ID or OAuth)
+            try:
+                response = session.request(method, url, **kwargs_in)
+            except requests.exceptions.Timeout:
+                raise SalesforceError("Timeout, URL=%s" % url)
+            if response.status_code == 401:  # Unauthorized
+                # Reauthenticate and retry (expired or invalid session ID or OAuth)
+                data = response.json()[0]
+                if data['errorCode'] == 'INVALID_SESSION_ID':
+                    token = session.auth.reauthenticate()
+                    if 'headers' in kwargs:
+                        kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
+                    try:
+                        response = session.request(method, url, **kwargs_in)
+                    except requests.exceptions.Timeout:
+                        raise SalesforceError("Timeout, URL=%s" % url)
+
+            # status codes help
+            # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
+            if response.status_code <= 304:
+                # OK (200, 201, 204, 300, 304)
+                return response
+
+            # Error (400, 403, 404, 405, 415, 500)
+            # TODO Remove this verbose setting after tuning of specific messages.
+            #      Currently it is better more or less.
+            verbose = not self.debug_silent
+            if 'json' not in response.headers.get('Content-Type', ''):
+                raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
+            # Other Errors are reported in the json body
             data = response.json()[0]
-            if data['errorCode'] == 'INVALID_SESSION_ID':
-                token = session.auth.reauthenticate()
-                if 'headers' in kwargs:
-                    kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
-                try:
-                    response = session.request(method, url, **kwargs_in)
-                except requests.exceptions.Timeout:
-                    raise SalesforceError("Timeout, URL=%s" % url)
-
-        # status codes help
-        # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
-        if response.status_code <= 304:
-            # OK (200, 201, 204, 300, 304)
-            return response
-
-        # Error (400, 403, 404, 405, 415, 500)
-        # TODO Remove this verbose setting after tuning of specific messages.
-        #      Currently it is better more or less.
-        verbose = not self.debug_silent
-        if 'json' not in response.headers.get('Content-Type', ''):
-            raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
-        # Other Errors are reported in the json body
-        data = response.json()[0]
-        if response.status_code == 404:  # ResourceNotFound
-            if (method == 'DELETE') and data['errorCode'] in ('ENTITY_IS_DELETED',
-                                                              'INVALID_CROSS_REFERENCE_KEY'):
-                # It is a delete command and the object is in trash bin or
-                # completely deleted or it only could be a valid Id for this type
-                # then is ignored similarly to delete by a classic database query:
-                # DELETE FROM xy WHERE id = 'something_deleted_yet'
-                return None  # TODO add a warning and add it to messages
-            # if this Id can not be ever valid.
-            raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-                                  % (response.text, url), data, response, verbose
-                                  )
-        if data['errorCode'] == 'INVALID_FIELD':
-            raise SalesforceError(data['message'], data, response, verbose)
-        elif data['errorCode'] == 'MALFORMED_QUERY':
-            raise SalesforceError(data['message'], data, response, verbose)
-        elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
-            raise SalesforceError(data['message'], data, response, verbose)
-        elif data['errorCode'] == 'METHOD_NOT_ALLOWED':  # 405
-            raise SalesforceError('%s: %s %s' % (data['message'], method, url), data, response, verbose)
-        # some kind of failed query
-        raise SalesforceError('%s' % data, data, response, verbose)
+            if response.status_code == 404:  # ResourceNotFound
+                if (method == 'DELETE') and data['errorCode'] in ('ENTITY_IS_DELETED',
+                                                                  'INVALID_CROSS_REFERENCE_KEY'):
+                    # It is a delete command and the object is in trash bin or
+                    # completely deleted or it only could be a valid Id for this type
+                    # then is ignored similarly to delete by a classic database query:
+                    # DELETE FROM xy WHERE id = 'something_deleted_yet'
+                    return None  # TODO add a warning and add it to messages
+                # if this Id can not be ever valid.
+                raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
+                                      % (response.text, url), data, response, verbose
+                                      )
+            if data['errorCode'] == 'INVALID_FIELD':
+                raise SalesforceError(data['message'], data, response, verbose)
+            elif data['errorCode'] == 'MALFORMED_QUERY':
+                raise SalesforceError(data['message'], data, response, verbose)
+            elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
+                raise SalesforceError(data['message'], data, response, verbose)
+            elif data['errorCode'] == 'METHOD_NOT_ALLOWED':  # 405
+                raise SalesforceError('%s: %s %s' % (data['message'], method, url), data, response, verbose)
+            # some kind of failed query
+            raise SalesforceError('%s' % data, data, response, verbose)
+        except catched_exceptions:
+            # nothing is catched usually and error handler not used
+            exc_class, exc_value, _ = sys.exc_info()
+            errorhandler(self, cursor_context, exc_class, exc_value)
 
     @property
     def last_used_cursor(self):
@@ -332,7 +339,9 @@ class Cursor(object):
         self.connection = connection
         self.messages = []
         self.lastrowid = None
+        self.errorhandler = connection.errorhandler
         # private
+        self._next_records_url = None
         self._results = not_executed_yet()
 
     # -- DB API methods
@@ -340,7 +349,10 @@ class Cursor(object):
     # .callproc(...)  noit implemented
 
     def close(self):
-        self.connection = None
+        if self._next_records_url:
+            # TODO remote query locator is open and can notbe easily closed without consuming all data
+            pass
+        self._clean()
 
     def execute(self, operation, parameters=None):
         self._clean()
@@ -388,10 +400,6 @@ class Cursor(object):
 
     # -- private methods
 
-    def err_hand(self, errorclass, errorvalue):
-        "call the errorhandler"
-        self.connection.errorhandler(self.connection, self, errorclass, errorvalue)
-
     def _check(self):
         if not self.connection:
             raise InterfaceError("Cursor Closed")
@@ -403,6 +411,7 @@ class Cursor(object):
         self.rownumber = None
         del self.messages[:]
         self.lastrowid = None
+        self._next_records_url = None
         self._results = not_executed_yet()
         self._check()
 
@@ -417,6 +426,17 @@ class Cursor(object):
 CursorDescription = namedtuple('CursorDescription', 'name type_code '
                                'display_size internal_size precision scale null_ok')
 CursorDescription.__new__.func_defaults = 7 * (None,)
+
+
+def standard_errorhandler(connection, cursor, errorclass, errorvalue):
+    if cursor:
+        cursor.messages.append(errorclass, errorvalue)
+    else:
+        connection.messages.append(errorclass, errorvalue)
+    raise
+
+
+# --- private
 
 
 def not_executed_yet():
@@ -438,7 +458,7 @@ def signalize_extensions():
     warnings.warn("DB-API extension .errorhandler used")
 
 
-# LOW LEVEL
+# --  LOW LEVEL
 
 
 # pylint:disable=too-many-arguments
