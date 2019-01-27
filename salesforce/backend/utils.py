@@ -3,7 +3,6 @@ CursorWrapper (like django.db.backends.utils)
 """
 import datetime
 import decimal
-import json
 import logging
 from itertools import islice
 
@@ -201,6 +200,7 @@ class CursorWrapper(object):
             data = response.json(parse_float=decimal.Decimal)
             # a SELECT query
             if 'totalSize' in data:
+                # SELECT
                 self.rowcount = data['totalSize']
             # a successful INSERT query, return after getting PK
             elif('success' in data and 'id' in data):
@@ -278,30 +278,21 @@ class CursorWrapper(object):
 
     def execute_insert(self, query):
         table = query.model._meta.db_table
-        headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)
+        obj_url = self.db.connection.rest_api_url('sobjects', table, relative=True)
         if len(post_data) == 1:
             # single object
-            url_parts = ('sobjects', table, '')
             post_data = post_data[0]
-        else:
-            # composite by REST
-            url_parts = ('composite',)
-            post_data = {
-                'allOrNone': True,
-                'compositeRequest': [
-                    {
-                        'method': 'POST',
-                        'url': '/services/data/v{0}/sobjects/{1}'.format(salesforce.API_VERSION, table),
-                        'referenceId': str(i),
-                        'body': row,
-                    }
-                    for i, row in enumerate(post_data)
-                ]
-            }
-
-        log.debug('INSERT %s%s', table, post_data)
-        return self.handle_api_exceptions('POST', *url_parts, headers=headers, data=json.dumps(post_data))
+            return self.handle_api_exceptions('POST', obj_url, json=post_data)
+        # composite by REST
+        post_data = {
+            'allOrNone': True,
+            'compositeRequest': [
+                {'method': 'POST', 'url': obj_url, 'referenceId': str(i), 'body': row}
+                for i, row in enumerate(post_data)
+            ]
+        }
+        return self.handle_api_exceptions('POST', 'composite', json=post_data)
 
     def get_pks_from_query(self, query):
         """Prepare primary keys for update and delete queries"""
@@ -340,60 +331,51 @@ class CursorWrapper(object):
 
     def execute_update(self, query):
         table = query.model._meta.db_table
-        headers = {'Content-Type': 'application/json'}
         post_data = extract_values(query)
         pks = self.get_pks_from_query(query)
         log.debug('UPDATE %s(%s)%r', table, pks, post_data)
         if not pks:
             return
+        obj_url = self.db.connection.rest_api_url('sobjects', table, '', relative=True)
         if len(pks) == 1:
             # single request
-            url_parts = ('sobjects', table, pks[0])
-            ret = self.handle_api_exceptions('PATCH', *url_parts, headers=headers, data=json.dumps(post_data))
-        else:
-            # composite by REST
-            post_data = {
-                'allOrNone': True,
-                'compositeRequest': [
-                    {
-                        'method': 'PATCH',
-                        'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
-                            salesforce.API_VERSION, table, x),
-                        'referenceId': x,
-                        'body': post_data,
-                    } for x in pks
-                ]
-            }
-            ret = self.handle_api_exceptions('POST', 'composite', headers=headers, data=json.dumps(post_data))
+            ret = self.handle_api_exceptions('PATCH', obj_url + pks[0], json=post_data)
+            self.rowcount = 1
+            return ret
+        # composite by REST
+        post_data = {
+            'allOrNone': True,
+            'compositeRequest': [
+                {'method': 'PATCH', 'url': obj_url + pk, 'referenceId': pk, 'body': post_data}
+                for pk in pks
+            ]
+        }
+        ret = self.handle_api_exceptions('POST', 'composite', json=post_data)
         self.rowcount = 1
         return ret
 
     def execute_delete(self, query):
         table = query.model._meta.db_table
-        pk = self.get_pks_from_query(query)
+        pks = self.get_pks_from_query(query)
 
-        log.debug('DELETE %s(%s)', table, pk)
-        if not pk:
+        log.debug('DELETE %s(%s)', table, pks)
+        if not pks:
             self.rowcount = 0
             return
-        if len(pk) == 1:
-            ret = self.handle_api_exceptions('DELETE', 'sobjects', table, pk[0])
+        if len(pks) == 1:
+            ret = self.handle_api_exceptions('DELETE', 'sobjects', table, pks[0])
             self.rowcount = 1 if (ret and ret.status_code == 204) else 0
             return ret
         # bulk by REST
-        headers = {'Content-Type': 'application/json'}
+        url = self.db.connection.rest_api_url('sobjects', table, '', relative=True)
         post_data = {
             'allOrNone': True,
             'compositeRequest': [
-                {
-                    'method': 'DELETE',
-                    'url': '/services/data/v{0}/sobjects/{1}/{2}'.format(
-                        salesforce.API_VERSION, table, x),
-                    'referenceId': x,
-                } for x in pk
+                {'method': 'DELETE', 'url': url + pk, 'referenceId': pk}
+                for pk in pks
             ]
         }
-        ret = self.handle_api_exceptions('POST', 'composite', headers=headers, data=json.dumps(post_data))
+        ret = self.handle_api_exceptions('POST', 'composite', json=post_data)
         self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
 
     # The following 3 methods (execute_ping, id_request, versions_request)

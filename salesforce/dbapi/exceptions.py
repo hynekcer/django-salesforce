@@ -5,6 +5,10 @@ from . import log
 PY3 = sys.version_info[0] == 3
 # pylint:disable=too-few-public-methods
 
+
+class SalesforceWarning(Exception):
+    pass
+
 class Error(Exception if PY3 else StandardError):  # NOQA: # pylint: disable=undefined-variable
     pass                                           # StandardError is undefined in PY3
 
@@ -26,10 +30,14 @@ class SalesforceError(DatabaseError):
     """
     def __init__(self, message='', data=None, response=None, verbose=False):
         if data:
-            if 'code' in data:
-                message = '{} {}'.format(data['code'], message)
+            separ = ' '
+            if '\n' in message:
+                separ = '\n  '
+                message = message.replace('\n', separ)
+            if 'errorCode' in data:
+                message = data['errorCode'] + separ + message
             if 'fields' in data:
-                message = '{} FIELDS: {}'.format(message, data['fields'])
+                message += separ + 'FIELDS: {}'.format(data['fields'])
         DatabaseError.__init__(self, message)
         self.data = data
         self.response = response
@@ -44,11 +52,11 @@ class DataError(SalesforceError):
 
 
 class OperationalError(SalesforceError):
-    pass
+    pass  # e.g. network, auth
 
 
 class IntegrityError(SalesforceError):
-    pass
+    pass  # e.g. foreign key
 
 
 class InternalError(SalesforceError):
@@ -56,12 +64,8 @@ class InternalError(SalesforceError):
 
 
 class ProgrammingError(SalesforceError):
-    pass
+    pass  # e.g sql syntax
 
 
 class NotSupportedError(SalesforceError):
-    pass
-
-
-class SalesforceWarning(Exception):
     pass

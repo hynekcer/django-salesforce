@@ -177,23 +177,39 @@ class RawConnection(object):
             api_ver:  API version that should be used instead of connection.api_ver
                 default. A special api_ver="" can be used to omit api version
                 (for request to ask for available api versions)
+            relative: If `relative` is true then the url is without domain
         Examples: self.rest_api_url("query?q=select+id+from+Organization")
                   self.rest_api_url("sobject", "Contact", id, api_ver="45.0")
                   self.rest_api_url(api_ver="")   # versions request
+                  self.rest_api_url("sobject", relative=True)
+                  self.rest_api_url("/services/data/v45.0")
         Output:
 
                   https://na1.salesforce.com/services/data/v44.0/query?q=select+id+from+Organization
                   https://na1.salesforce.com/services/data/v45.0/sobject/Contact/003DD00000000XYAAA
                   https://na1.salesforce.com/services/data
+                  /services/data/v45.0
+                  https://na1.salesforce.com/services/data/44.0
         """
+        url_parts = list(url_parts)
         if url_parts and url_parts[0].startswith('https://'):
             return '/'.join(url_parts)
+        relative = kwargs.pop('relative', False)
         api_ver = kwargs.pop('api_ver', None)
-        assert not kwargs
         api_ver = api_ver if api_ver is not None else self.api_ver
-        base = self.sf_session.auth.instance_url
-        prefix = 'services/data' + ('/v{api_ver}'.format(api_ver=api_ver) if api_ver else '')
-        return '/'.join((base, prefix) + url_parts)
+        assert not kwargs
+        if not relative:
+            base = [self.sf_session.auth.instance_url]
+        else:
+            base = ['']
+        if url_parts and url_parts[0].startswith('/'):
+            prefix = []
+            url_parts[0] = url_parts[0][1:]
+        else:
+            prefix = ['services/data']
+            if api_ver:
+                prefix += ['v{api_ver}'.format(api_ver=api_ver)]
+        return '/'.join(base + prefix + url_parts)
 
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
         """Call REST API and handle exceptions
@@ -202,9 +218,11 @@ class RawConnection(object):
             url_parts: like in rest_api_url() method
             api_ver:   like in rest_api_url() method
             kwargs: other parameters passed to requests.request,
-                but the usual important parameters are only
-                    data=json.dumps(...)
-                    headers={'Content-Type': 'application/json'}
+                but the only notable parameter is: (... json=data)
+
+                that works like (...
+                    headers = {'Content-Type': 'application/json'},
+                    data=json.dumps(data))
         """
         # pylint:disable=too-many-branches,too-many-locals
         global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
@@ -240,11 +258,12 @@ class RawConnection(object):
 
             # status codes docs
             # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
-            if response.status_code <= 304:
-                # OK (200, 201, 204, 300, 304)
+            if response.ok:
+                # succes: 200 "OK" (GET, POST). 201 "Created" (POST), 204 "No Content" (DELETE), 300, 304)
+                #         300 ambiguous items for external ID. 304 "Not Modified" (HEADER describe metadata),
                 return response
 
-            # Error (400, 403, 404, 405, 415, 500)
+            # Error (400, 403 permissions or REQUEST_LIMIT_EXCEEDED, 404, 405, 415, 500)
             # TODO Remove this verbose setting after tuning of specific messages.
             #      Currently it is better more or less.
             verbose = not self.debug_silent
@@ -264,14 +283,17 @@ class RawConnection(object):
                 raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
                                       % (response.text, url), data, response, verbose
                                       )
-            if data['errorCode'] == 'INVALID_FIELD':
+            if data['errorCode'] == 'METHOD_NOT_ALLOWED':  # 405
+                raise SalesforceError('%s:\n%s "%s"' % (data['message'], method, url), data, response, verbose)
+            if 'errorCode' in data:
                 raise SalesforceError(data['message'], data, response, verbose)
-            elif data['errorCode'] == 'MALFORMED_QUERY':
-                raise SalesforceError(data['message'], data, response, verbose)
-            elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
-                raise SalesforceError(data['message'], data, response, verbose)
-            elif data['errorCode'] == 'METHOD_NOT_ALLOWED':  # 405
-                raise SalesforceError('%s: %s %s' % (data['message'], method, url), data, response, verbose)
+            # if data['errorCode'] == 'INVALID_FIELD':
+            #     raise SalesforceError(data['message'], data, response, verbose)
+            # elif data['errorCode'] == 'MALFORMED_QUERY':
+            #     raise SalesforceError(data['message'], data, response, verbose)
+            # elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
+            #     raise SalesforceError(data['message'], data, response, verbose)
+
             # some kind of failed query
             raise SalesforceError('%s' % data, data, response, verbose)
         except catched_exceptions:
@@ -444,9 +466,9 @@ CursorDescription.__new__.func_defaults = 7 * (None,)
 
 def standard_errorhandler(connection, cursor, errorclass, errorvalue):
     if cursor:
-        cursor.messages.append(errorclass, errorvalue)
+        cursor.messages.append((errorclass, errorvalue))
     else:
-        connection.messages.append(errorclass, errorvalue)
+        connection.messages.append((errorclass, errorvalue))
 
 
 # --- private
