@@ -29,7 +29,12 @@ from salesforce.dbapi import get_max_retries
 from salesforce.dbapi import settings  # i.e. django.conf.settings
 from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
-    InternalError, ProgrammingError, NotSupportedError, SalesforceError, PY3)
+    InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning, PY3)
+
+try:
+    from urllib.parse import urlencode
+except ImportError:
+    from urllib import urlencode
 
 try:
     import beatbox  # pylint: disable=unused-import
@@ -114,11 +119,6 @@ class RawConnection(object):
 
         self._last_used_cursor = None  # weakref.proxy for single thread debugging
 
-        if errorhandler:
-            warnings.warn("DB-API extension errorhandler used")
-            # TODO implement it by a context manager around handle_api_exceptions (+ this warning)
-            raise NotSupportedError
-
         # The SFDC database is connected as late as possible if only tests
         # are running. Some tests don't require a connection.
         if not getattr(settings, 'SF_LAZY_CONNECT', 'test' in sys.argv):  # TODO don't use argv
@@ -129,18 +129,16 @@ class RawConnection(object):
     # Methods close() and commit() can be safely ignored, because everything is
     # committed automatically and the REST API is stateless.
 
-    # pylint:disable=no-self-use
     def close(self):
-        pass
+        del self.messages[:]
 
-    def commit(self):
+    def commit(self):  # pylint:disable=no-self-use
         # "Database modules that do not support transactions should implement
         # this method with void functionality."
         pass
 
-    def rollback(self):
+    def rollback(self):  # pylint:disable=no-self-use
         log.info("Rollback is not implemented.")
-    # pylint:enable=no-self-use
 
     def cursor(self):
         return Cursor(self)
@@ -240,7 +238,7 @@ class RawConnection(object):
                     except requests.exceptions.Timeout:
                         raise SalesforceError("Timeout, URL=%s" % url)
 
-            # status codes help
+            # status codes docs
             # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
             if response.status_code <= 304:
                 # OK (200, 201, 204, 300, 304)
@@ -277,9 +275,11 @@ class RawConnection(object):
             # some kind of failed query
             raise SalesforceError('%s' % data, data, response, verbose)
         except catched_exceptions:
+            # TODO reimplement the errorhandler by a context manager or by a decorator
             # nothing is catched usually and error handler not used
             exc_class, exc_value, _ = sys.exc_info()
             errorhandler(self, cursor_context, exc_class, exc_value)
+            raise
 
     @property
     def last_used_cursor(self):
@@ -341,6 +341,7 @@ class Cursor(object):
         self.lastrowid = None
         self.errorhandler = connection.errorhandler
         # private
+        self.row_factory = lambda x: x  # standard dict
         self._next_records_url = None
         self._results = not_executed_yet()
 
@@ -350,19 +351,16 @@ class Cursor(object):
 
     def close(self):
         if self._next_records_url:
-            # TODO remote query locator is open and can notbe easily closed without consuming all data
+            # TODO remote query locator is open and can not be easily closed without consuming all data
             pass
         self._clean()
 
-    def execute(self, operation, parameters=None):
+    def execute(self, operation, parameters=None, queryall=False):
         self._clean()
         sqltype = operation.split(None, 1)[0].upper()
         _ = sqltype  # NOQA
-        # TODO
         if sqltype == 'SELECT':
-            self.execute_select(operation, parameters)
-            self.rowcount = 1
-            self.description = ()
+            self.execute_select(operation, parameters, queryall=queryall)
         else:
             raise ProgrammingError
 
@@ -373,8 +371,16 @@ class Cursor(object):
 
     def __iter__(self):
         self._check()
-        for row in self._results:
-            yield row
+        while True:
+            for row in self._results:
+                yield self.row_factory(row)
+                self.rownumber += 1
+            if not self._next_records_url:
+                break
+            data = self.handle_api_exceptions('GET', self._next_records_url).json()
+            self._next_records_url = data['nextRecordsUrl']
+            self._results = data['records']
+            del data
 
     def fetchone(self):
         self._check()
@@ -400,6 +406,17 @@ class Cursor(object):
 
     # -- private methods
 
+    def execute_select(self, sql, parameters, queryall=False):
+        processed_sql = str(sql) % tuple(arg_to_soql(x) for x in parameters)
+        service = 'query' if queryall else 'queryAll'
+        url_part = '?'.join((service, urlencode(dict(q=processed_sql))))
+        data = self.handle_api_exceptions('GET', url_part).json()
+        self.description = ()  # TODO
+        self.rowcount = data['totalSize']
+        self.rownumber = 0
+        self._next_records_url = data['nextRecordsUrl']
+        self._results = data['records']
+
     def _check(self):
         if not self.connection:
             raise InterfaceError("Cursor Closed")
@@ -414,9 +431,6 @@ class Cursor(object):
         self._next_records_url = None
         self._results = not_executed_yet()
         self._check()
-
-    def execute_select(self, operation, parameters):
-        pass
 
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
         return self.connection.handle_api_exceptions(method, *url_parts, cursor_context=self, **kwargs)
@@ -433,7 +447,6 @@ def standard_errorhandler(connection, cursor, errorclass, errorvalue):
         cursor.messages.append(errorclass, errorvalue)
     else:
         connection.messages.append(errorclass, errorvalue)
-    raise
 
 
 # --- private
@@ -446,16 +459,16 @@ def not_executed_yet():
 
 def signalize_extensions():
     """DB API 2.0 extension are reported by warnings at run-time."""
-    warnings.warn("DB-API extension cursor.rownumber used")
-    warnings.warn("DB-API extension connection.<exception> used")  # TODO
-    warnings.warn("DB-API extension cursor.connection used")
-    # not implemented DB-API extension cursor.scroll()
-    warnings.warn("DB-API extension cursor.messages used")
-    warnings.warn("DB-API extension connection.messages used")
-    warnings.warn("DB-API extension cursor.next() used")
-    warnings.warn("DB-API extension cursor.__iter__() used")
-    warnings.warn("DB-API extension cursor.lastrowid used")
-    warnings.warn("DB-API extension .errorhandler used")
+    warnings.warn("DB-API extension cursor.rownumber used", SalesforceWarning)
+    warnings.warn("DB-API extension connection.<exception> used", SalesforceWarning)  # TODO
+    warnings.warn("DB-API extension cursor.connection used", SalesforceWarning)
+    # not implemented DB-API extension cursor.scroll(, SalesforceWarning)
+    warnings.warn("DB-API extension cursor.messages used", SalesforceWarning)
+    warnings.warn("DB-API extension connection.messages used", SalesforceWarning)
+    warnings.warn("DB-API extension cursor.next(, SalesforceWarning) used")
+    warnings.warn("DB-API extension cursor.__iter__(, SalesforceWarning) used")
+    warnings.warn("DB-API extension cursor.lastrowid used", SalesforceWarning)
+    warnings.warn("DB-API extension .errorhandler used", SalesforceWarning)
 
 
 # --  LOW LEVEL

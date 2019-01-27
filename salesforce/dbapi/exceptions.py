@@ -61,3 +61,7 @@ class ProgrammingError(SalesforceError):
 
 class NotSupportedError(SalesforceError):
     pass
+
+
+class SalesforceWarning(Exception):
+    pass
