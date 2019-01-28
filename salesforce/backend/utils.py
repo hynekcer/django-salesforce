@@ -292,7 +292,9 @@ class CursorWrapper(object):
                 for i, row in enumerate(post_data)
             ]
         }
-        return self.handle_api_exceptions('POST', 'composite', json=post_data)
+        ret = self.db.connection.composite_request(post_data['compositeRequest'])
+        return ret
+        # return self.handle_api_exceptions('POST', 'composite', json=post_data)
 
     def get_pks_from_query(self, query):
         """Prepare primary keys for update and delete queries"""

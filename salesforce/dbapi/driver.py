@@ -9,6 +9,7 @@ Low level code for Salesforce is also here.
 """
 import datetime
 import decimal
+import json
 import logging
 import socket
 import sys
@@ -262,46 +263,98 @@ class RawConnection(object):
                 # succes: 200 "OK" (GET, POST). 201 "Created" (POST), 204 "No Content" (DELETE), 300, 304)
                 #         300 ambiguous items for external ID. 304 "Not Modified" (HEADER describe metadata),
                 return response
+            self.raise_errors(response)
 
-            # Error (400, 403 permissions or REQUEST_LIMIT_EXCEEDED, 404, 405, 415, 500)
-            # TODO Remove this verbose setting after tuning of specific messages.
-            #      Currently it is better more or less.
-            verbose = not self.debug_silent
-            if 'json' not in response.headers.get('Content-Type', ''):
-                raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
-            # Other Errors are reported in the json body
-            data = response.json()[0]
-            if response.status_code == 404:  # ResourceNotFound
-                if (method == 'DELETE') and data['errorCode'] in ('ENTITY_IS_DELETED',
-                                                                  'INVALID_CROSS_REFERENCE_KEY'):
-                    # It is a delete command and the object is in trash bin or
-                    # completely deleted or it only could be a valid Id for this type
-                    # then is ignored similarly to delete by a classic database query:
-                    # DELETE FROM xy WHERE id = 'something_deleted_yet'
-                    return None  # TODO add a warning and add it to messages
-                # if this Id can not be ever valid.
-                raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-                                      % (response.text, url), data, response, verbose
-                                      )
-            if data['errorCode'] == 'METHOD_NOT_ALLOWED':  # 405
-                raise SalesforceError('%s:\n%s "%s"' % (data['message'], method, url), data, response, verbose)
-            if 'errorCode' in data:
-                raise SalesforceError(data['message'], data, response, verbose)
-            # if data['errorCode'] == 'INVALID_FIELD':
-            #     raise SalesforceError(data['message'], data, response, verbose)
-            # elif data['errorCode'] == 'MALFORMED_QUERY':
-            #     raise SalesforceError(data['message'], data, response, verbose)
-            # elif data['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
-            #     raise SalesforceError(data['message'], data, response, verbose)
-
-            # some kind of failed query
-            raise SalesforceError('%s' % data, data, response, verbose)
         except catched_exceptions:
             # TODO reimplement the errorhandler by a context manager or by a decorator
             # nothing is catched usually and error handler not used
             exc_class, exc_value, _ = sys.exc_info()
             errorhandler(self, cursor_context, exc_class, exc_value)
             raise
+
+    def raise_errors(self, response):
+        # Error (400, 403 permissions or REQUEST_LIMIT_EXCEEDED, 404, 405, 415, 500)
+        # verbose = not self.debug_silent
+        verbose = False
+        if 'json' not in response.headers.get('Content-Type', ''):
+            raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
+        # Other Errors are reported in the json body
+        data = json.loads(response.text)
+        data_0 = data[0]
+        method = response.request.method
+        url = response.request.url
+        if response.status_code == 404:  # ResourceNotFound
+            if (method == 'DELETE') and data_0['errorCode'] in ('ENTITY_IS_DELETED',
+                                                                'INVALID_CROSS_REFERENCE_KEY'):
+                # It is a delete command and the object is in trash bin or
+                # completely deleted or it only could be a valid Id for this type
+                # then is ignored similarly to delete by a classic database query:
+                # DELETE FROM xy WHERE id = 'something_deleted_yet'
+                return None  # TODO add a warning and add it to messages
+        if data_0['errorCode'] in ('METHOD_NOT_ALLOWED',  # 405
+                                   'NOT_FOUND',  # 404
+                                   ):
+            raise SalesforceError('%s:\n%s "%s"' % (data_0['message'], method, url), data, response, verbose)
+        if 'errorCode' in data_0:
+            raise SalesforceError(data_0['message'], data, response, verbose)
+        # if data_0['errorCode'] == 'INVALID_FIELD':
+        #     raise SalesforceError(data_0['message'], data, response, verbose)
+        # elif data_0['errorCode'] == 'MALFORMED_QUERY':
+        #     raise SalesforceError(data_0['message'], data, response, verbose)
+        # elif data_0['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
+        #     raise SalesforceError(data_0['message'], data, response, verbose)
+        if response.status_code == 404:  # ResourceNotFound
+            raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
+                                  % (response.text, url), data, response, verbose)
+
+        # some kind of failed query
+        raise SalesforceError('%s' % data_0, data_0, response, verbose)
+
+    def composite_request(self, data):
+        """Call a 'composite' request with subrequests, error handling
+
+        A fake object for request/response is created for a subrequest in case
+        of error, to be possible to use the same error hanler with a clear
+        message as with an individual request.
+        """
+        post_data = {'compositeRequest': data, 'allOrNone': True}
+        resp = self.handle_api_exceptions('POST', 'composite', json=post_data)
+        comp_resp = resp.json()['compositeResponse']
+        is_ok = all(x['httpStatusCode'] < 400 for x in comp_resp)
+        if is_ok:
+            return resp
+
+        # construct an exquivalent of individual bad request/response
+        bad_responses = {
+            i: x for i, x in enumerate(comp_resp)
+            if not (x['httpStatusCode'] == 400
+                    and x['body'][0]['errorCode'] in ('PROCESSING_HALTED', 'ALL_OR_NONE_OPERATION_ROLLED_BACK'))
+        }
+        if len(bad_responses) != 1:
+            raise InternalError("Too much or too many subrequests with an individual error")
+        bad_i, bad_response = bad_responses.popitem()
+        bad_request = data[bad_i]
+
+        bad_req = FakeReqResp()
+        bad_req.data = bad_request.get('body')
+        bad_req.headers = bad_request.get('httpHeaders', {})
+        bad_req.method = bad_request['method']
+        bad_req.url = bad_request['url']
+        bad_req.reference_id = bad_request['referenceId']
+
+        bad_resp = FakeReqResp()
+        bad_resp.status_code = bad_response['httpStatusCode']
+        bad_resp.headers = bad_response['httpHeaders']
+        bad_resp.headers.update({'Content-Type': resp.headers['Content-Type']})
+        bad_resp.url = bad_req.url
+        body = [x.copy() for x in bad_response['body']]
+        for x in body:
+            x.update(referenceId=bad_response['referenceId'])
+        bad_resp.text = json.dumps(body)
+        bad_resp.reference_id = bad_response['referenceId']
+        bad_resp.request = bad_req
+
+        self.raise_errors(bad_resp)
 
     @property
     def last_used_cursor(self):
@@ -313,6 +366,18 @@ class RawConnection(object):
     @last_used_cursor.setter
     def last_used_cursor(self, cursor):
         self._last_used_cursor = weakref.proxy(cursor)
+
+
+class FakeReqResp(object):  # pylint:disable=too-few-public-methods,too-many-instance-attributes
+    def __init__(self):
+        self.data = None
+        self.status_code = None
+        self.text = None
+        self.request = None
+        self.method = None
+        self.url = None
+        self.headers = None
+        self.reference_id = None
 
 
 Connection = RawConnection
@@ -469,6 +534,11 @@ def standard_errorhandler(connection, cursor, errorclass, errorvalue):
         cursor.messages.append((errorclass, errorvalue))
     else:
         connection.messages.append((errorclass, errorvalue))
+
+
+def verbose_error_handler(connection, cursor, errorclass, errorvalue):  # pylint:disable=unused-argument
+    import pprint
+    pprint.pprint(errorvalue.__dict__)
 
 
 # --- private

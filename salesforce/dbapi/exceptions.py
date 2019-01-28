@@ -30,14 +30,18 @@ class SalesforceError(DatabaseError):
     """
     def __init__(self, message='', data=None, response=None, verbose=False):
         if data:
+            data_0 = data[0]
             separ = ' '
             if '\n' in message:
                 separ = '\n  '
                 message = message.replace('\n', separ)
-            if 'errorCode' in data:
-                message = data['errorCode'] + separ + message
-            if 'fields' in data:
-                message += separ + 'FIELDS: {}'.format(data['fields'])
+            if 'errorCode' in data_0:
+                subreq = ''
+                if 'referenceId' in data_0:
+                    subreq = " (in subrequest '{}')".format(data_0['referenceId'])
+                message = data_0['errorCode'] + subreq + separ + message
+            if 'fields' in data_0:
+                message += separ + 'FIELDS: {}'.format(data_0['fields'])
         DatabaseError.__init__(self, message)
         self.data = data
         self.response = response

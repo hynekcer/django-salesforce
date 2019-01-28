@@ -187,7 +187,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
                 with QuietSalesforceErrors(sf_alias):
                     duplicate.save()
             except salesforce.backend.base.SalesforceError as exc:
-                self.assertEqual(exc.data['errorCode'], 'DUPLICATE_VALUE')
+                self.assertEqual(exc.data[0]['errorCode'], 'DUPLICATE_VALUE')
             else:
                 self.assertRaises(salesforce.backend.base.SalesforceError, duplicate.save)
 
