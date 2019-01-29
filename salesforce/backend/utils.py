@@ -284,12 +284,18 @@ class CursorWrapper(object):
             # single object
             post_data = post_data[0]
             return self.handle_api_exceptions('POST', obj_url, json=post_data)
+        if self.composite_type == 'sobject-collections':
+            # SObject Collections
+            records = [x.copy() for x in post_data]
+            for x in records:
+                x['attributes'] = {'type': table}
+            ret = self.db.connection.collestions_request(records)
+            return ret
         # composite by REST
         composite_data = [{'method': 'POST', 'url': obj_url, 'referenceId': str(i), 'body': row}
                           for i, row in enumerate(post_data)]
         ret = self.db.connection.composite_request(composite_data)
         return ret
-        # return self.handle_api_exceptions('POST', 'composite', json=post_data)
 
     def get_pks_from_query(self, query):
         """Prepare primary keys for update and delete queries"""
@@ -441,7 +447,13 @@ class CursorWrapper(object):
         return list(self.results)
 
     def close(self):
-        pass
+        self.cursor.close()
+
+    def commit(self):
+        self.cursor.commit()
+
+    def rollback(self):
+        self.cursor.rollback()
 
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
         return self.cursor.handle_api_exceptions(method, *url_parts, **kwargs)

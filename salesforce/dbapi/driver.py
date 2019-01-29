@@ -118,6 +118,7 @@ class RawConnection(object):
         self._sf_session = None
         self.api_ver = salesforce.API_VERSION
         self.debug_verbs = None
+        self.composite_type = 'sobjects-collections'  # 'sobjects-collections' or 'composite'
 
         self._last_used_cursor = None  # weakref.proxy for single thread debugging
 
@@ -263,7 +264,7 @@ class RawConnection(object):
             if data['errorCode'] == 'INVALID_SESSION_ID':
                 token = session.auth.reauthenticate()
                 if 'headers' in kwargs:
-                    kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
+                    kwargs['headers'].update(Authorization='OAuth %s' % token)
                 try:
                     response = session.request(method, url, **kwargs_in)
                 except requests.exceptions.Timeout:
@@ -327,7 +328,7 @@ class RawConnection(object):
         if is_ok:
             return resp
 
-        # construct an exquivalent of individual bad request/response
+        # construct an equivalent of individual bad request/response
         bad_responses = {
             i: x for i, x in enumerate(comp_resp)
             if not (x['httpStatusCode'] == 400
@@ -338,26 +339,34 @@ class RawConnection(object):
         bad_i, bad_response = bad_responses.popitem()
         bad_request = data[bad_i]
 
-        bad_req = FakeReqResp()
-        bad_req.data = bad_request.get('body')
-        bad_req.headers = bad_request.get('httpHeaders', {})
-        bad_req.method = bad_request['method']
-        bad_req.url = bad_request['url']
-        bad_req.reference_id = bad_request['referenceId']
+        bad_req = FakeReq(bad_request['method'], bad_request['url'], bad_request.get('body'),
+                          bad_request.get('httpHeaders', {}), context={bad_i: bad_request['referenceId']})
 
-        bad_resp = FakeReqResp()
-        bad_resp.status_code = bad_response['httpStatusCode']
-        bad_resp.headers = bad_response['httpHeaders']
-        bad_resp.headers.update({'Content-Type': resp.headers['Content-Type']})
-        bad_resp.url = bad_req.url
         body = [x.copy() for x in bad_response['body']]
         for x in body:
             x.update(referenceId=bad_response['referenceId'])
-        bad_resp.text = json.dumps(body)
-        bad_resp.reference_id = bad_response['referenceId']
-        bad_resp.request = bad_req
+        bad_resp_headers = bad_response['httpHeaders'].copy()
+        bad_resp_headers.update({'Content-Type': resp.headers['Content-Type']})
+
+        bad_resp = FakeResp(bad_response['httpStatusCode'], json.dumps(body), bad_req, bad_resp_headers)
 
         self.raise_errors(bad_resp)
+
+    def collection_request(self, records):
+        post_data = {'compositeRequest': records, 'allOrNone': True}
+        resp = self.handle_api_exceptions('POST', 'composite/sobjects', json=post_data)
+        comp_resp = resp.json()
+        is_ok = all(x['success'] for x in comp_resp)
+        if is_ok:
+            assert all(not x['errors'] for x in comp_resp)
+            return resp
+
+        # construct an equivalent of individual bad request/response
+        bad_responses = {
+            i: x for i, x in enumerate(comp_resp)
+            if not x['success']
+            and x['errors'][0]['statusCode'] in ('PROCESSING_HALTED', 'ALL_OR_NONE_OPERATION_ROLLED_BACK')
+        }
 
     @property
     def last_used_cursor(self):
@@ -371,16 +380,21 @@ class RawConnection(object):
         self._last_used_cursor = weakref.proxy(cursor)
 
 
-class FakeReqResp(object):  # pylint:disable=too-few-public-methods,too-many-instance-attributes
-    def __init__(self):
-        self.data = None
-        self.status_code = None
-        self.text = None
-        self.request = None
-        self.method = None
-        self.url = None
-        self.headers = None
-        self.reference_id = None
+class FakeReq(object):
+    def __init__(self, method, url, data, headers=None, context=None):
+        self.method = method
+        self.url = url
+        self.data = data
+        self.headers = headers
+        self.context = None
+
+
+class FakeResp(object):  # pylint:disable=too-few-public-methods,too-many-instance-attributes
+    def __init__(self, status_code, headers, text, request):
+        self.status_code = status_code
+        self.text = text
+        self.request = request
+        self.headers = headers
 
 
 Connection = RawConnection
