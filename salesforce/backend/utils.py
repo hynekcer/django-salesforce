@@ -285,14 +285,9 @@ class CursorWrapper(object):
             post_data = post_data[0]
             return self.handle_api_exceptions('POST', obj_url, json=post_data)
         # composite by REST
-        post_data = {
-            'allOrNone': True,
-            'compositeRequest': [
-                {'method': 'POST', 'url': obj_url, 'referenceId': str(i), 'body': row}
-                for i, row in enumerate(post_data)
-            ]
-        }
-        ret = self.db.connection.composite_request(post_data['compositeRequest'])
+        composite_data = [{'method': 'POST', 'url': obj_url, 'referenceId': str(i), 'body': row}
+                          for i, row in enumerate(post_data)]
+        ret = self.db.connection.composite_request(composite_data)
         return ret
         # return self.handle_api_exceptions('POST', 'composite', json=post_data)
 
@@ -345,15 +340,10 @@ class CursorWrapper(object):
             self.rowcount = 1
             return ret
         # composite by REST
-        post_data = {
-            'allOrNone': True,
-            'compositeRequest': [
-                {'method': 'PATCH', 'url': obj_url + pk, 'referenceId': pk, 'body': post_data}
-                for pk in pks
-            ]
-        }
-        ret = self.handle_api_exceptions('POST', 'composite', json=post_data)
-        self.rowcount = 1
+        composite_data = [{'method': 'PATCH', 'url': obj_url + pk, 'referenceId': pk, 'body': post_data}
+                          for pk in pks]
+        ret = self.db.connection.composite_request(composite_data)
+        self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
         return ret
 
     def execute_delete(self, query):
@@ -370,14 +360,9 @@ class CursorWrapper(object):
             return ret
         # bulk by REST
         url = self.db.connection.rest_api_url('sobjects', table, '', relative=True)
-        post_data = {
-            'allOrNone': True,
-            'compositeRequest': [
-                {'method': 'DELETE', 'url': url + pk, 'referenceId': pk}
-                for pk in pks
-            ]
-        }
-        ret = self.handle_api_exceptions('POST', 'composite', json=post_data)
+        composite_data = [{'method': 'DELETE', 'url': url + pk, 'referenceId': pk}
+                          for pk in pks]
+        ret = self.db.connection.composite_request(composite_data)
         self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
 
     # The following 3 methods (execute_ping, id_request, versions_request)

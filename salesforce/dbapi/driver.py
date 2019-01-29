@@ -30,7 +30,8 @@ from salesforce.dbapi import get_max_retries
 from salesforce.dbapi import settings  # i.e. django.conf.settings
 from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
-    InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning, PY3)
+    InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning, PY3,
+    warn_sf,)
 
 try:
     from urllib.parse import urlencode
@@ -116,7 +117,7 @@ class RawConnection(object):
 
         self._sf_session = None
         self.api_ver = salesforce.API_VERSION
-        self.debug_silent = False
+        self.debug_verbs = None
 
         self._last_used_cursor = None  # weakref.proxy for single thread debugging
 
@@ -225,11 +226,24 @@ class RawConnection(object):
                     headers = {'Content-Type': 'application/json'},
                     data=json.dumps(data))
         """
-        # pylint:disable=too-many-branches,too-many-locals
-        global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
+        # The outer part - about error handler
         assert method in ('HEAD', 'GET', 'POST', 'PATCH', 'DELETE')
-        api_ver = kwargs.pop('api_ver', None)
         cursor_context = kwargs.pop('cursor_context', None)
+        errorhandler = cursor_context.errorhandler if cursor_context else self.errorhandler
+        catched_exceptions = (SalesforceError, requests.exceptions.RequestException) if errorhandler else ()
+        try:
+            return self.handle_api_exceptions_inter(method, *url_parts, **kwargs)
+
+        except catched_exceptions:
+            # nothing is catched usually and error handler not used
+            exc_class, exc_value, _ = sys.exc_info()
+            errorhandler(self, cursor_context, exc_class, exc_value)
+            raise
+
+    def handle_api_exceptions_inter(self, method, *url_parts, **kwargs):
+        """The main (middle) part - it is enough if no error occurs."""
+        global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
+        api_ver = kwargs.pop('api_ver', None)
         url = self.rest_api_url(*url_parts, api_ver=api_ver)
         # The 'verify' option is about verifying TLS certificates
         kwargs_in = {'timeout': getattr(settings, 'SALESFORCE_QUERY_TIMEOUT', (4, 15)),
@@ -238,77 +252,66 @@ class RawConnection(object):
         log.debug('Request API URL: %s', url)
         request_count += 1
         session = self.sf_session
-        errorhandler = cursor_context.errorhandler if cursor_context else self.errorhandler
-        catched_exceptions = (SalesforceError, requests.exceptions.RequestException) if errorhandler else ()
+
         try:
-            try:
-                response = session.request(method, url, **kwargs_in)
-            except requests.exceptions.Timeout:
-                raise SalesforceError("Timeout, URL=%s" % url)
-            if response.status_code == 401:  # Unauthorized
-                # Reauthenticate and retry (expired or invalid session ID or OAuth)
-                data = response.json()[0]
-                if data['errorCode'] == 'INVALID_SESSION_ID':
-                    token = session.auth.reauthenticate()
-                    if 'headers' in kwargs:
-                        kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
-                    try:
-                        response = session.request(method, url, **kwargs_in)
-                    except requests.exceptions.Timeout:
-                        raise SalesforceError("Timeout, URL=%s" % url)
+            response = session.request(method, url, **kwargs_in)
+        except requests.exceptions.Timeout:
+            raise SalesforceError("Timeout, URL=%s" % url)
+        if response.status_code == 401:  # Unauthorized
+            # Reauthenticate and retry (expired or invalid session ID or OAuth)
+            data = response.json()[0]
+            if data['errorCode'] == 'INVALID_SESSION_ID':
+                token = session.auth.reauthenticate()
+                if 'headers' in kwargs:
+                    kwargs['headers'].update(dict(Authorization='OAuth %s' % token))
+                try:
+                    response = session.request(method, url, **kwargs_in)
+                except requests.exceptions.Timeout:
+                    raise SalesforceError("Timeout, URL=%s" % url)
 
-            # status codes docs
-            # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
-            if response.ok:
-                # succes: 200 "OK" (GET, POST). 201 "Created" (POST), 204 "No Content" (DELETE), 300, 304)
-                #         300 ambiguous items for external ID. 304 "Not Modified" (HEADER describe metadata),
-                return response
-            self.raise_errors(response)
-
-        except catched_exceptions:
-            # TODO reimplement the errorhandler by a context manager or by a decorator
-            # nothing is catched usually and error handler not used
-            exc_class, exc_value, _ = sys.exc_info()
-            errorhandler(self, cursor_context, exc_class, exc_value)
-            raise
+        if response.ok:
+            # 200 "OK" (GET, POST)
+            # 201 "Created" (POST)
+            # 204 "No Content" (DELETE)
+            # 300 ambiguous items for external ID.
+            # 304 "Not Modified" (after conditional HEADER request for metadata),
+            return response
+        # status codes docs (400, 403, 404, 405, 415, 500)
+        # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/errorcodes.htm
+        self.raise_errors(response)
 
     def raise_errors(self, response):
-        # Error (400, 403 permissions or REQUEST_LIMIT_EXCEEDED, 404, 405, 415, 500)
-        # verbose = not self.debug_silent
-        verbose = False
-        if 'json' not in response.headers.get('Content-Type', ''):
-            raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
-        # Other Errors are reported in the json body
-        data = json.loads(response.text)
-        data_0 = data[0]
-        method = response.request.method
-        url = response.request.url
-        if response.status_code == 404:  # ResourceNotFound
-            if (method == 'DELETE') and data_0['errorCode'] in ('ENTITY_IS_DELETED',
-                                                                'INVALID_CROSS_REFERENCE_KEY'):
-                # It is a delete command and the object is in trash bin or
-                # completely deleted or it only could be a valid Id for this type
-                # then is ignored similarly to delete by a classic database query:
-                # DELETE FROM xy WHERE id = 'something_deleted_yet'
-                return None  # TODO add a warning and add it to messages
-        if data_0['errorCode'] in ('METHOD_NOT_ALLOWED',  # 405
-                                   'NOT_FOUND',  # 404
-                                   ):
-            raise SalesforceError('%s:\n%s "%s"' % (data_0['message'], method, url), data, response, verbose)
-        if 'errorCode' in data_0:
-            raise SalesforceError(data_0['message'], data, response, verbose)
-        # if data_0['errorCode'] == 'INVALID_FIELD':
-        #     raise SalesforceError(data_0['message'], data, response, verbose)
-        # elif data_0['errorCode'] == 'MALFORMED_QUERY':
-        #     raise SalesforceError(data_0['message'], data, response, verbose)
-        # elif data_0['errorCode'] == 'INVALID_FIELD_FOR_INSERT_UPDATE':
-        #     raise SalesforceError(data_0['message'], data, response, verbose)
-        if response.status_code == 404:  # ResourceNotFound
-            raise SalesforceError("Couldn't connect to API (404): %s, URL=%s"
-                                  % (response.text, url), data, response, verbose)
+        """The innermost part - report errors by exceptions"""
+        # Errors: 400, 403 permissions or REQUEST_LIMIT_EXCEEDED, 404, 405, 415, 500)
+        # TODO extract a case ID for Salesforce support from code 500 messages
 
-        # some kind of failed query
-        raise SalesforceError('%s' % data_0, data_0, response, verbose)
+        # TODO disabled 'debug_verbs' temporarily, after writing better default messages
+        verb = self.debug_verbs  # NOQA pylint:disable=unused-variable
+        method = response.request.method
+        data = None
+        if 'json' in response.headers.get('Content-Type', '') and response.text:
+            data = json.loads(response.text)
+        if not (isinstance(data, list) and data and 'errorCode' in data[0]):
+            raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
+
+        # Other Errors are reported in the json body
+        err_msg = data[0]['message']
+        err_code = data[0]['errorCode']
+        if response.status_code == 404:  # ResourceNotFound
+            if method == 'DELETE' and err_code in ('ENTITY_IS_DELETED', 'INVALID_CROSS_REFERENCE_KEY'):
+                # It was a delete command and the object is in trash bin or it is
+                # completely deleted or it could be a valid Id for this sobject type.
+                # Then we accept it with a warning, similarly to delete by a classic database query:
+                # DELETE FROM xy WHERE id = 'something_deleted_yet'
+                warn_sf([err_msg, "Object is deleted before delete or update"], response, ['method+url'])
+                # TODO add a warning and add it to messages
+                return None
+        if err_code in ('NOT_FOUND',           # 404 e.g. invalid object type in url path or url query?q=select ...
+                        'METHOD_NOT_ALLOWED',  # 405 e.g. patch instead of post
+                        ):                     # both need to report the url
+            raise SalesforceError([err_msg], response, ['method+url'])
+        # it is good e.g for these errorCode: ('INVALID_FIELD', 'MALFORMED_QUERY', 'INVALID_FIELD_FOR_INSERT_UPDATE')
+        raise SalesforceError([err_msg], response)
 
     def composite_request(self, data):
         """Call a 'composite' request with subrequests, error handling

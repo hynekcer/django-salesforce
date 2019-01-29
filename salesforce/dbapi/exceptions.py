@@ -1,16 +1,30 @@
 # All error types described in DB API 2 are implemented the same way as in
 # Django (1.10 to 2.18)., otherwise some exceptions are not correctly reported in it.
+import json
 import sys
-from . import log
+import warnings
 PY3 = sys.version_info[0] == 3
 # pylint:disable=too-few-public-methods
 
 
-class SalesforceWarning(Exception):
-    pass
+class SalesforceWarning(Warning):
+    def __init__(self, messages, response=None, verbs=None):
+        self.data, self.response, self.verbs = (), None, None
+        message = prepare_exception(self, messages, response, verbs)
+        super(SalesforceWarning, self).__init__(message)
 
-class Error(Exception if PY3 else StandardError):  # NOQA: # pylint: disable=undefined-variable
-    pass                                           # StandardError is undefined in PY3
+
+class Error(Exception if PY3 else StandardError):  # NOQA pylint:disable=undefined-variable
+    #                                              # StandardError is undefined in PY3
+    """
+    Database error that can get detailed error information from a SF REST API response.
+
+    customized for aproriate information, not too much or too little.
+    """
+    def __init__(self, messages, response=None, verbs=None):
+        self.data, self.response, self.verbs = (), None, None
+        message = prepare_exception(self, messages, response, verbs)
+        super(Error, self).__init__(message)
 
 
 class InterfaceError(Error):
@@ -22,33 +36,7 @@ class DatabaseError(Error):
 
 
 class SalesforceError(DatabaseError):
-    """
-    DatabaseError that usually gets detailed error information from SF response
-
-    in the second parameter, decoded from REST, that frequently need not to be
-    displayed.
-    """
-    def __init__(self, message='', data=None, response=None, verbose=False):
-        if data:
-            data_0 = data[0]
-            separ = ' '
-            if '\n' in message:
-                separ = '\n  '
-                message = message.replace('\n', separ)
-            if 'errorCode' in data_0:
-                subreq = ''
-                if 'referenceId' in data_0:
-                    subreq = " (in subrequest '{}')".format(data_0['referenceId'])
-                message = data_0['errorCode'] + subreq + separ + message
-            if 'fields' in data_0:
-                message += separ + 'FIELDS: {}'.format(data_0['fields'])
-        DatabaseError.__init__(self, message)
-        self.data = data
-        self.response = response
-        self.verbose = verbose
-        if verbose:
-            log.info("Error (debug details) %s\n%s", response.text,
-                     response.__dict__)
+    pass
 
 
 class DataError(SalesforceError):
@@ -60,7 +48,7 @@ class OperationalError(SalesforceError):
 
 
 class IntegrityError(SalesforceError):
-    pass  # e.g. foreign key
+    pass  # e.g. foreign key (probably recently deleted obj)
 
 
 class InternalError(SalesforceError):
@@ -73,3 +61,49 @@ class ProgrammingError(SalesforceError):
 
 class NotSupportedError(SalesforceError):
     pass
+
+
+def prepare_exception(obj, messages, response=None, verbs=None):
+    """Prepare excetion params or only an exception message
+
+    parameters:
+        messages: list of strings, that will be separated by new line
+        response: response from a request to SFDC REST API
+        verbs: list of options about verbosity
+    """
+    verbs = set(verbs or [])
+    known_options = ['method+url']
+    assert isinstance(messages, (list))
+    assert not verbs.difference(known_options)
+
+    data = None
+    if response is not None and 'json' in response.headers.get('Content-Type', '') and response.text:
+        data = json.loads(response.text)
+        if data:
+            data_0 = data[0]
+            if 'errorCode' in data_0:
+                subreq = ''
+                if 'referenceId' in data_0:
+                    subreq = " (in subrequest {!r})".format(data_0['referenceId'])
+                messages = [data_0['errorCode'] + subreq] + messages
+            if data_0.get('fields'):
+                messages.append('FIELDS: {}'.format(data_0['fields']))
+            if len(data) > 1:
+                messages.append('MORE_ERRORS ({})'.format(len(data)))
+    if 'method+url' in verbs:
+        method = response.request.method
+        url = response.request.url
+        messages.append('{} "{}"'.format(method, url))
+    separ = '\n    '
+    messages = [x.replace('\n', separ) for x in messages]
+    message = separ.join(messages)
+    if obj:
+        obj.data = data
+        obj.response = response
+        obj.verbs = verbs
+    return message
+
+
+def warn_sf(messages, response, verbs=None, klass=SalesforceWarning):
+    """Issue a warning SalesforceWarning, with message combined from message and data from SFDC response"""
+    warnings.warn(klass(messages, response, verbs), stacklevel=2)

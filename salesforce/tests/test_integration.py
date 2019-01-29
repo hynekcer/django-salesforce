@@ -11,13 +11,15 @@ from distutils.util import strtobool  # pylint: disable=no-name-in-module,import
 import datetime
 import logging
 import os
-import pytz
+import warnings
 
+import pytz
 from django.conf import settings
 from django.db import connections
 from django.db.models import Q, Avg, Count, Sum, Min, Max
 from django.test import TestCase
 from django.utils import timezone
+from django.utils.six import PY3
 
 import salesforce
 from salesforce import router
@@ -27,6 +29,7 @@ from salesforce.backend.test_helpers import (  # NOQA pylint:disable=unused-impo
 from salesforce.backend.test_helpers import (
     current_user, default_is_sf, sf_alias, uid_version as uid,
     QuietSalesforceErrors, LazyTestMixin)
+from salesforce.dbapi.exceptions import SalesforceWarning
 from salesforce.testrunner.example.models import (
         Account, Contact, Lead, User,
         ApexEmailNotification, BusinessHours, Campaign, CronTrigger,
@@ -497,7 +500,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             account_1.delete()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    def test_bulk_delete(self):
+    def test_bulk_delete_and_all(self):
         """Delete two Accounts one request.
         """
         account_0, account_1 = [Account(Name='test' + uid), Account(Name='test' + uid)]
@@ -507,11 +510,27 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             with self.lazy_assert_n_requests(2):
                 ret = Account.objects.filter(Name='test' + uid).delete()
             self.assertEqual(ret, (2, {'example.Account': 2}))
-            self.assertEqual(Account.objects.filter(Name='test' + uid).count(), 0)
+            result_count = Account.objects.filter(Name='test' + uid).count()
+            self.assertEqual(result_count, 0)
             self.lazy_check()
         finally:
-            account_0.delete()
-            account_1.delete()
+            if result_count:
+                account_0.delete()
+                account_1.delete()
+        try:
+            nn = 25
+            pks = []
+            objects = [Lead(Company='sf_test lead', LastName='name_{}'.format(i))
+                       for i in range(nn)]
+            with self.lazy_assert_n_requests(1):
+                ret = Lead.objects.bulk_create(objects)
+            pks = [x.pk for x in objects if x.pk]
+            with self.lazy_assert_n_requests(1):
+                ret = Lead.objects.filter(id__in=pks).update(Company='sf_test lead_2')
+        finally:
+            if pks:
+                with self.lazy_assert_n_requests(1):
+                    ret = Lead.objects.filter(id__in=pks).delete()
 
     def test_escape_single_quote(self):
         """Test single quotes in strings used in a filter
@@ -726,15 +745,24 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         contact.save()
         contact_id = contact.pk
         Contact(pk=contact_id).delete()
+
         # Id of a deleted object or a too small valid Id shouldn't raise
-        Contact(pk=contact_id).delete()
+        with warnings.catch_warnings(record=True) as w:
+            Contact(pk=contact_id).delete()
+            self.assertIs(w[-1].category, SalesforceWarning)
+            self.assertIn('ENTITY_IS_DELETED', str(w[-1].message))
+        if not PY3:
+            return skip("Python 2.7 doesn't support assertWarns")
         # Simulate the same with obsoleted oauth session
         # It is not possible to use salesforce.auth.expire_token() to simulate
         # expiration because it forces reauhentication before the next request
         salesforce.auth.oauth_data[sf_alias]['access_token'] = 'something invalid/expired'
-        Contact(pk=contact_id).delete()
-        # Id of completely deleted item or fake but valid item.
-        Contact(pk='003000000000000AAA').delete()
+        with self.assertWarns(SalesforceWarning) as cm:
+            Contact(pk=contact_id).delete()
+            self.assertIn('ENTITY_IS_DELETED', cm.warnings[0].message.args[0])
+        with self.assertWarns(SalesforceWarning) as cm:
+            # Id of completely deleted item or fake but valid item.
+            Contact(pk='003000000000000AAA').delete()
         # bad_id = '003000000000000AAB' # Id with an incorrect uppercase mask
         # self.assertRaises(salesforce.backend.base.SalesforceError, Contact(pk=bad_id).delete)
 
