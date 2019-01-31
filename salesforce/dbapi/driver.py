@@ -33,6 +33,7 @@ from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
     InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning,
     warn_sf, PY3, text_type)
+from salesforce.backend.subselect import QQuery
 
 try:
     from urllib.parse import urlencode
@@ -506,6 +507,23 @@ class Cursor(object):
             self.execute_select(operation, parameters, queryall=queryall)
         else:
             raise ProgrammingError
+        
+        parameters = parameters or []
+        self._clean()
+        sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
+        # TODO
+        if sqltype == 'SELECT':
+            self.qquery = QQuery(sql)
+            self.description = [(alias, None, None, None, name) for alias, name in
+                                zip(self.qquery.aliases, self.qquery.fields)]
+            # TODO
+            cur = CursorWrapper(self.connection)
+            self._resp = cur.execute_select(sql, parameters)
+            self.iterator = self.qquery.parse_rest_response(self._resp, self)
+            self.rowcount = self._resp.json(parse_float=decimal.Decimal)['totalSize']
+            self.rownumber = 0
+        else:
+            print("Not implemented: %s" % sql)
 
     def executemany(self, operation, seq_of_parameters):
         self._clean()
