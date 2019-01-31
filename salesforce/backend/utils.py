@@ -17,7 +17,7 @@ import salesforce
 from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.dbapi.driver import (
-    DatabaseError,
+    DatabaseError, merge_dict,
     register_conversion, arg_to_soql, arg_to_json, SALESFORCE_DATETIME_FORMAT)
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
 
@@ -155,7 +155,7 @@ class CursorWrapper(object):
     to the SF REST API
     """
 
-    # pylint:disable=too-many-instance-attributes
+    # pylint:disable=too-many-instance-attributes,too-many-public-methods
     def __init__(self, db):
         """
         Connect to the Salesforce API.
@@ -190,6 +190,8 @@ class CursorWrapper(object):
             response = self.execute_select(q, args)
         else:
             response = self.execute_django(q, args)
+            if isinstance(response, list):
+                return
 
         # the encoding is detected automatically, e.g. from headers
         if response and response.text:
@@ -259,7 +261,7 @@ class CursorWrapper(object):
     def execute_select(self, q, args):
         processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
         service = 'query' if not getattr(self.query, 'is_query_all', False) else 'queryAll'
-        url_part = '?'.join((service, urlencode(dict(q=processed_sql))))
+        url_part = '/?'.join((service, urlencode(dict(q=processed_sql))))
         log.debug(processed_sql)
         if q != MIGRATIONS_QUERY_TO_BE_IGNORED:
             # normal query
@@ -284,13 +286,13 @@ class CursorWrapper(object):
             # single object
             post_data = post_data[0]
             return self.handle_api_exceptions('POST', obj_url, json=post_data)
-        if self.composite_type == 'sobject-collections':
+        if self.db.connection.composite_type == 'sobject-collections':
             # SObject Collections
-            records = [x.copy() for x in post_data]
-            for x in records:
-                x['attributes'] = {'type': table}
-            ret = self.db.connection.collestions_request(records)
-            return ret
+            records = [merge_dict(x, type_=table) for x in post_data]
+            ret = self.db.connection.sobject_collections_request('POST', records)
+            self.lastrowid = ret
+            self.rowcount = len(ret)
+            return
         # composite by REST
         composite_data = [{'method': 'POST', 'url': obj_url, 'referenceId': str(i), 'body': row}
                           for i, row in enumerate(post_data)]
@@ -345,6 +347,13 @@ class CursorWrapper(object):
             ret = self.handle_api_exceptions('PATCH', obj_url + pks[0], json=post_data)
             self.rowcount = 1
             return ret
+        if self.db.connection.composite_type == 'sobject-collections':
+            # SObject Collections
+            records = [merge_dict(post_data, id=pk, type_=table) for pk in pks]
+            ret = self.db.connection.sobject_collections_request('PATCH', records)
+            self.lastrowid = ret
+            self.rowcount = len(ret)
+            return
         # composite by REST
         composite_data = [{'method': 'PATCH', 'url': obj_url + pk, 'referenceId': pk, 'body': post_data}
                           for pk in pks]
@@ -364,6 +373,13 @@ class CursorWrapper(object):
             ret = self.handle_api_exceptions('DELETE', 'sobjects', table, pks[0])
             self.rowcount = 1 if (ret and ret.status_code == 204) else 0
             return ret
+        if self.db.connection.composite_type == 'sobject-collections':
+            # SObject Collections
+            records = pks
+            ret = self.db.connection.sobject_collections_request('DELETE', records)
+            self.lastrowid = ret
+            self.rowcount = len(ret)
+            return
         # bulk by REST
         url = self.db.connection.rest_api_url('sobjects', table, '', relative=True)
         composite_data = [{'method': 'DELETE', 'url': url + pk, 'referenceId': pk}
@@ -382,7 +398,7 @@ class CursorWrapper(object):
         a lost connection is possible together with token expire in a post
         request (insert).
         """
-        ret = self.handle_api_exceptions('GET')
+        ret = self.handle_api_exceptions('GET', '')
         return str_dict(ret.json())
 
     def id_request(self):
@@ -399,7 +415,7 @@ class CursorWrapper(object):
 
     def versions_request(self):
         """List Available REST API Versions"""
-        ret = self.handle_api_exceptions('GET', api_ver='')
+        ret = self.handle_api_exceptions('GET', '', api_ver='')
         return [str_dict(x) for x in ret.json()]
 
     def query_results(self, results):

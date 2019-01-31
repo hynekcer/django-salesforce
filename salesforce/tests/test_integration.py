@@ -518,7 +518,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
                 account_0.delete()
                 account_1.delete()
         try:
-            nn = 25
+            nn = 200
             pks = []
             objects = [Lead(Company='sf_test lead', LastName='name_{}'.format(i))
                        for i in range(nn)]

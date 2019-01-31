@@ -4,6 +4,7 @@ import json
 import sys
 import warnings
 PY3 = sys.version_info[0] == 3
+text_type = str if PY3 else type(u'')
 # pylint:disable=too-few-public-methods
 
 
@@ -73,10 +74,13 @@ def prepare_exception(obj, messages, response=None, verbs=None):
     """
     verbs = set(verbs or [])
     known_options = ['method+url']
-    assert isinstance(messages, (list))
+    if isinstance(messages, (text_type, str)):
+        messages = list(messages)
+    assert isinstance(messages, list)
     assert not verbs.difference(known_options)
 
     data = None
+    # a boolean from a failed response is False, though error messages in json should be decoded
     if response is not None and 'json' in response.headers.get('Content-Type', '') and response.text:
         data = json.loads(response.text)
         if data:
@@ -93,8 +97,16 @@ def prepare_exception(obj, messages, response=None, verbs=None):
     if 'method+url' in verbs:
         method = response.request.method
         url = response.request.url
-        messages.append('{} "{}"'.format(method, url))
+        if len(url) > 100:
+            url = url[:100] + '...'
+        data_info = ''
+        if (method in ('POST', 'PATCH') and
+                (not response.request.body or 'json' not in response.request.headers['content-type'])):
+            data_info = ' (without json request data)'
+        messages.append('in {} "{}"{}'.format(method, url, data_info))
     separ = '\n    '
+    if not PY3:
+        messages = [x if isinstance(x, str) else x.encode('utf-8') for x in messages]
     messages = [x.replace('\n', separ) for x in messages]
     message = separ.join(messages)
     if obj:

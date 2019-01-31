@@ -201,3 +201,13 @@ class SalesforcePasswordAuth(SalesforceAuth):
         else:
             raise LookupError("oauth failed: %s: %s" % (settings_dict['USER'], response.text))
         return response_data
+
+
+class MockAuth(SalesforceAuth):
+    """Dummy authentication for offline Mock tests"""
+    def authenticate(self):
+        return {'instance_url': 'mock://'}
+
+    def get_auth(self):
+        # this is never cached
+        return self.authenticate()

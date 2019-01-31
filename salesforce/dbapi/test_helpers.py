@@ -4,6 +4,10 @@ from contextlib import contextmanager
 from unittest import expectedFailure
 
 from salesforce.dbapi import connections, driver
+try:
+    from unittest import mock  # pylint:disable=unused-import
+except ImportError:
+    import mock  # NOQA
 
 
 def expectedFailureIf(condition):

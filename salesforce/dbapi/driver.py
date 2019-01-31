@@ -11,6 +11,7 @@ import datetime
 import decimal
 import json
 import logging
+import re
 import socket
 import sys
 import threading
@@ -30,8 +31,8 @@ from salesforce.dbapi import get_max_retries
 from salesforce.dbapi import settings  # i.e. django.conf.settings
 from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
-    InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning, PY3,
-    warn_sf,)
+    InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning,
+    warn_sf, PY3, text_type)
 
 try:
     from urllib.parse import urlencode
@@ -118,7 +119,7 @@ class RawConnection(object):
         self._sf_session = None
         self.api_ver = salesforce.API_VERSION
         self.debug_verbs = None
-        self.composite_type = 'sobjects-collections'  # 'sobjects-collections' or 'composite'
+        self.composite_type = 'sobject-collections'  # 'sobject-collections' or 'composite'
 
         self._last_used_cursor = None  # weakref.proxy for single thread debugging
 
@@ -165,9 +166,8 @@ class RawConnection(object):
                 sf_instance_url = sf_session.auth.instance_url
                 sf_requests_adapter = HTTPAdapter(max_retries=get_max_retries())
                 sf_session.mount(sf_instance_url, sf_requests_adapter)
-                # Additional header works, but the improvement is immeasurable for
-                # me. (less than SF speed fluctuation)
-                # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'}
+                # Additional headers work, but the same are added automatically by "requests' package.
+                # sf_session.header = {'accept-encoding': 'gzip, deflate', 'connection': 'keep-alive'} # TODO
                 self._sf_session = sf_session
 
     def rest_api_url(self, *url_parts, **kwargs):
@@ -195,7 +195,7 @@ class RawConnection(object):
                   https://na1.salesforce.com/services/data/44.0
         """
         url_parts = list(url_parts)
-        if url_parts and url_parts[0].startswith('https://'):
+        if url_parts and re.match(r'^(?:https|mock)://', url_parts[0]):
             return '/'.join(url_parts)
         relative = kwargs.pop('relative', False)
         api_ver = kwargs.pop('api_ver', None)
@@ -260,8 +260,8 @@ class RawConnection(object):
             raise SalesforceError("Timeout, URL=%s" % url)
         if response.status_code == 401:  # Unauthorized
             # Reauthenticate and retry (expired or invalid session ID or OAuth)
-            data = response.json()[0]
-            if data['errorCode'] == 'INVALID_SESSION_ID':
+            if ('json' in response.headers['content-type']
+                    or response.json()[0]['errorCode'] == 'INVALID_SESSION_ID'):
                 token = session.auth.reauthenticate()
                 if 'headers' in kwargs:
                     kwargs['headers'].update(Authorization='OAuth %s' % token)
@@ -270,7 +270,7 @@ class RawConnection(object):
                 except requests.exceptions.Timeout:
                     raise SalesforceError("Timeout, URL=%s" % url)
 
-        if response.ok:
+        if response.status_code < 400:  # OK
             # 200 "OK" (GET, POST)
             # 201 "Created" (POST)
             # 204 "No Content" (DELETE)
@@ -290,10 +290,14 @@ class RawConnection(object):
         verb = self.debug_verbs  # NOQA pylint:disable=unused-variable
         method = response.request.method
         data = None
-        if 'json' in response.headers.get('Content-Type', '') and response.text:
+        is_json = 'json' in response.headers.get('Content-Type', '') and response.text
+        if is_json:
             data = json.loads(response.text)
         if not (isinstance(data, list) and data and 'errorCode' in data[0]):
-            raise OperationalError("HTTP error code %d: %s" % (response.status_code, response.text))
+            messages = [response.text] if is_json else []
+            raise OperationalError(
+                ['HTTP error "%d %s":' % (response.status_code, response.reason)]
+                + messages, response, ['method+url'])
 
         # Other Errors are reported in the json body
         err_msg = data[0]['message']
@@ -342,9 +346,8 @@ class RawConnection(object):
         bad_req = FakeReq(bad_request['method'], bad_request['url'], bad_request.get('body'),
                           bad_request.get('httpHeaders', {}), context={bad_i: bad_request['referenceId']})
 
-        body = [x.copy() for x in bad_response['body']]
-        for x in body:
-            x.update(referenceId=bad_response['referenceId'])
+        body = [merge_dict(x, referenceId=bad_response['referenceId'])
+                for x in bad_response['body']]
         bad_resp_headers = bad_response['httpHeaders'].copy()
         bad_resp_headers.update({'Content-Type': resp.headers['Content-Type']})
 
@@ -352,21 +355,56 @@ class RawConnection(object):
 
         self.raise_errors(bad_resp)
 
-    def collection_request(self, records):
-        post_data = {'compositeRequest': records, 'allOrNone': True}
-        resp = self.handle_api_exceptions('POST', 'composite/sobjects', json=post_data)
-        comp_resp = resp.json()
-        is_ok = all(x['success'] for x in comp_resp)
-        if is_ok:
-            assert all(not x['errors'] for x in comp_resp)
-            return resp
+    def _group_results(self, resp_data, records, all_or_none):
+        x_ok, x_err, x_roll = [], [], []
+        for i, x in enumerate(resp_data):
+            if x['success']:
+                x_ok.append((i, x))
+            elif x['errors'][0]['statusCode'] in ('PROCESSING_HALTED', 'ALL_OR_NONE_OPERATION_ROLLED_BACK'):
+                x_roll.append((i, x))
+            else:
+                bad_id = [v for k, v in records[i].items() if k.lower() == 'id']
+                x_err.append((i, x['errors'], records[i]['attributes']['type'], bad_id[0] if bad_id else None))
+        if all_or_none:
+            assert not x_err and not x_roll or not x_ok and len(x_err) == 1
+        else:
+            assert not x_roll
+        return x_ok, x_err, x_roll
 
-        # construct an equivalent of individual bad request/response
-        bad_responses = {
-            i: x for i, x in enumerate(comp_resp)
-            if not x['success']
-            and x['errors'][0]['statusCode'] in ('PROCESSING_HALTED', 'ALL_OR_NONE_OPERATION_ROLLED_BACK')
-        }
+    def sobject_collections_request(self, method, records, all_or_none=True):
+        # pylint:disable=too-many-locals
+        assert method in ('GET', 'POST', 'PATCH', 'DELETE')
+        if method == 'DELETE':
+            params = dict(ids=','.join(records), allOrNone=str(bool(all_or_none)).lower())
+            resp = self.handle_api_exceptions(method, 'composite/sobjects', params=params)
+        else:
+            if method in ('POST', 'PATCH'):
+                records = [merge_dict(x, attributes={'type': x['type_']}) for x in records]
+                for x in records:
+                    x.pop('type_')
+                post_data = {'records': records, 'allOrNone': all_or_none}
+            else:
+                raise NotImplementedError("Method {} not implemended".format(method))
+
+            resp = self.handle_api_exceptions(method, 'composite/sobjects', json=post_data)
+        resp_data = resp.json()
+
+        x_ok, x_err, x_roll = self._group_results(resp_data, records, all_or_none)
+        is_ok = not x_err
+        if is_ok:
+            return [x['id'] for i, x in x_ok]  # for .lastrowid
+
+        width_type = max(len(type_) for i, errs, type_, id_ in x_err)
+        width_type = max(width_type, len('sobject'))
+        messages = ['', 'index {} sobject{:{width}s}error_info'.format('ID                '  #
+                    if x_err[0][3] else '', '', width=width_type + 2 - len('sobject'))]
+        for i, errs, type_, id_ in x_err:
+            field_info = 'FIELDS: {}'.format(errs[0]['fields']) if errs[0].get('fields') else ''
+            msg = '{:5d} {} {:{width_type}s}  {}: {} {}'.format(
+                i, id_ or '', type_, errs[0]['statusCode'], errs[0]['message'], field_info,
+                width_type=width_type)
+            messages.append(msg)
+        raise SalesforceError(messages)
 
     @property
     def last_used_cursor(self):
@@ -381,12 +419,13 @@ class RawConnection(object):
 
 
 class FakeReq(object):
+    # pylint:disable=too-few-public-methods,too-many-arguments
     def __init__(self, method, url, data, headers=None, context=None):
         self.method = method
         self.url = url
         self.data = data
         self.headers = headers
-        self.context = None
+        self.context = context
 
 
 class FakeResp(object):  # pylint:disable=too-few-public-methods,too-many-instance-attributes
@@ -587,6 +626,7 @@ def signalize_extensions():
 def getaddrinfo_wrapper(host, port, family=socket.AF_INET, socktype=0, proto=0, flags=0):
     """Patched 'getaddrinfo' with default family IPv4 (enabled by settings IPV4_ONLY=True)"""
     return orig_getaddrinfo(host, port, family, socktype, proto, flags)
+# pylint:enable=too-many-arguments
 
 
 # patch to IPv4 if required and not patched by anything other yet
@@ -666,7 +706,7 @@ sql_conversions = {}
 
 subclass_conversions = []
 
-# pylint:disable=bad-whitespace,no-member
+# pylint:disable=bad-whitespace
 register_conversion(int,             json_conv=str)
 register_conversion(float,           json_conv=lambda o: '%.15g' % o)
 register_conversion(type(None),      json_conv=lambda s: None,          sql_conv=lambda s: 'NULL')
@@ -677,10 +717,20 @@ register_conversion(datetime.datetime, json_conv=date_literal)
 register_conversion(datetime.time,   json_conv=lambda d: datetime.time.strftime(d, "%H:%M:%S.%f"))
 register_conversion(decimal.Decimal, json_conv=float, subclass=True)
 # the type models.Model is registered from backend, because it is a Django type
+# pylint:enable=bad-whitespace
 
 if not PY3:
+    # pylint:disable=no-member
     register_conversion(types.LongType, json_conv=str)
     register_conversion(types.UnicodeType,
                         json_conv=lambda s: s.encode('utf8'),
                         sql_conv=lambda s: quoted_string_literal(s.encode('utf8')))
-# pylint:enable=bad-whitespace,no-member
+
+
+def merge_dict(dict_1, *other, **kw):
+    """Merge two or more dict including kw into result dict."""
+    tmp = dict_1.copy()
+    for x in other:
+        tmp.update(x)
+    tmp.update(kw)
+    return tmp
