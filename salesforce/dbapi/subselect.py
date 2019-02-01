@@ -81,7 +81,7 @@ class QQuery(object):
                     match = re.search(r'\b\w+$', field)
                     if match:
                         alias = match.group()
-                        assert alias not in RESERVED_WORDS
+                        assert alias not in RESERVED_WORDS, "invalid alias name"
                         if match.start() > 0 and field[match.start() - 1] == ' ':
                             field = field[match.start() - 1]
                     else:
@@ -89,7 +89,7 @@ class QQuery(object):
                         expr_alias_counter += 1
                     assert '&' not in field, "Subquery not expected as field in aggregation query"
                 elif '&' in field:
-                    assert field == '(&)'
+                    assert field == '(&)'  # verify that the subquery was in parentheses
                     subquery = QQuery(self.subqueries[consumed_subqueries][0])
                     consumed_subqueries += 1
                     self.has_child_rel_field = True
@@ -113,17 +113,15 @@ class QQuery(object):
         # TODO it is not currently necessary to parse the exta_soql
         pass
 
-    def _make_flat(self, row_dict, path, subroots, cursor=None):
+    def _make_flat(self, row_dict, path, subroots):
         """Replace the nested dict objects by a flat dict with keys "object.object.name"."""
-        # The cursor parameter is currently unused (no introspection
-        # yet, only field_map by models)
+        # can get a cursor parameter, if introspection should be possible on the fly
         out = {}
         for k, v in row_dict.items():
-            klc = k.lower()  # "k lower case"
-            if (
-                not (isinstance(v, dict) and 'attributes' in v)
-                or ('done' in v and 'records' in v and 'totalSize' in v)
-            ):
+            klc = k.lower()  # "key lower case"
+            if (not (isinstance(v, dict) and 'attributes' in v)
+                    or ('done' in v and 'records' in v and 'totalSize' in v)
+                ):
                 if klc not in subroots:
                     out[klc] = v
                 else:
@@ -134,7 +132,7 @@ class QQuery(object):
                             out[alias.lower()[strip_pos:]] = None  # empty outer join field names
             else:
                 new_subroots = subroots[klc] if k != 'attributes' else {}
-                for sub_k, sub_v in self._make_flat(v, path + (klc,), new_subroots, cursor).items():
+                for sub_k, sub_v in self._make_flat(v, path + (klc,), new_subroots).items():
                     out[k.lower() + '.' + sub_k] = sub_v
         return out
 
@@ -149,7 +147,7 @@ class QQuery(object):
             while True:
                 for row_deep in resp['records']:
                     assert self.is_aggregation == (row_deep['attributes']['type'] == 'AggregateResult')
-                    row_flat = self._make_flat(row_deep, path=(), subroots=self.subroots, cursor=cursor)
+                    row_flat = self._make_flat(row_deep, path=(), subroots=self.subroots)
                     # TODO really "or x['done']"?
                     assert all(not isinstance(x, dict) or x['done'] for x in row_flat)
                     if issubclass(row_type, dict):
@@ -170,6 +168,9 @@ text_type = type(u'')
 
 
 def fix_data_type(data, tzinfo=None):
+    # this is a demo function. The data type shoud be read from some
+    # field mapping, not to guess by regexp. Only a datetime field
+    # specific enough to be acceptable.
     if isinstance(data, text_type) and SF_DATETIME_PATTERN.match(data):
         d = datetime.datetime.strptime(data, SALESFORCE_DATETIME_FORMAT)
         d = d.replace(tzinfo=pytz.utc)
@@ -182,19 +183,22 @@ def mark_quoted_strings(sql):
     """Mark all quoted strings in the SOQL by '@' and get them as params,
     with respect to all escaped backslashes and quotes.
     """
+    # pattern of a string parameter (pm), a char escaped by backslash (bs)
+    # out_pattern: characters valid in SOQL
     pm_pattern = re.compile(r"'[^\\']*(?:\\[\\'][^\\']*)*'")
     bs_pattern = re.compile(r"\\([\\'])")
-    out_pattern = re.compile("^(?:[-!()*+,.:<=>\w\s|%s])*$")
+    out_pattern = re.compile(r"^(?:[-!()*+,.:<=>\w\s|%s])*$")
+    missing_apostrophe = "invalid character in SOQL or a missing apostrophe"
     start = 0
     out = []
     params = []
     for match in pm_pattern.finditer(sql):
         out.append(sql[start:match.start()])
-        assert out_pattern.match(sql[start:match.start()])
+        assert out_pattern.match(sql[start:match.start()]), missing_apostrophe
         params.append(bs_pattern.sub('\\1', sql[match.start() + 1:match.end() - 1]))
         start = match.end()
     out.append(sql[start:])
-    assert out_pattern.match(sql[start:])
+    assert out_pattern.match(sql[start:]), missing_apostrophe
     return '@'.join(out), params
 
 
@@ -202,7 +206,8 @@ def subst_quoted_strings(sql, params):
     """Reverse operation to mark_quoted_strings - substitutes '@' by params.
     """
     parts = sql.split('@')
-    assert len(parts) == len(params) + 1
+    params_dont_match = "number of parameters doesn' match the transformed query"
+    assert len(parts) == len(params) + 1, params_dont_match  # would be internal error
     out = []
     for i, param in enumerate(params):
         out.append(parts[i])
@@ -227,7 +232,7 @@ def find_closing_parenthesis(sql, startpos):
                 opening = match.start()
             level += 1
         if par == ')':
-            assert level > 0
+            assert level > 0, "missing '(' before ')'"
             level -= 1
             if level == 0:
                 closing = match.end()

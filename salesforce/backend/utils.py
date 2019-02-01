@@ -119,11 +119,9 @@ def extract_values_inner(row, query):
     fields = query.model._meta.fields
     for _, field in enumerate(fields):
         sf_read_only = getattr(field, 'sf_read_only', 0)
-        if (
-                field.get_internal_type() == 'AutoField' or
+        if (field.get_internal_type() == 'AutoField' or
                 isinstance(query, subqueries.UpdateQuery) and (sf_read_only & NOT_UPDATEABLE) != 0 or
-                isinstance(query, subqueries.InsertQuery) and (sf_read_only & NOT_CREATEABLE) != 0
-        ):
+                isinstance(query, subqueries.InsertQuery) and (sf_read_only & NOT_CREATEABLE) != 0):
             continue
         if isinstance(query, subqueries.UpdateQuery):
             # update
