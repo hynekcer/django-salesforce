@@ -499,15 +499,15 @@ class Cursor(object):
             pass
         self._clean()
 
-    def execute(self, operation, parameters=None, queryall=False):
+    def execute(self, sql, parameters=None, queryall=False):
         self._clean()
-        sqltype = operation.split(None, 1)[0].upper()
+        sqltype = sql.split(None, 1)[0].upper()
         _ = sqltype  # NOQA
         if sqltype == 'SELECT':
-            self.execute_select(operation, parameters, queryall=queryall)
+            self.execute_select(sql, parameters, queryall=queryall)
         else:
             raise ProgrammingError
-        
+
         parameters = parameters or []
         self._clean()
         sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
