@@ -33,7 +33,7 @@ from salesforce.dbapi.exceptions import (  # NOQA pylint: disable=unused-import
     Error, InterfaceError, DatabaseError, DataError, OperationalError, IntegrityError,
     InternalError, ProgrammingError, NotSupportedError, SalesforceError, SalesforceWarning,
     warn_sf, PY3, text_type)
-from salesforce.backend.subselect import QQuery
+from salesforce.dbapi.subselect import QQuery
 
 try:
     from urllib.parse import urlencode
@@ -356,7 +356,8 @@ class RawConnection(object):
 
         self.raise_errors(bad_resp)
 
-    def _group_results(self, resp_data, records, all_or_none):
+    @staticmethod
+    def _group_results(resp_data, records, all_or_none):
         x_ok, x_err, x_roll = [], [], []
         for i, x in enumerate(resp_data):
             if x['success']:
@@ -397,8 +398,8 @@ class RawConnection(object):
 
         width_type = max(len(type_) for i, errs, type_, id_ in x_err)
         width_type = max(width_type, len('sobject'))
-        messages = ['', 'index {} sobject{:{width}s}error_info'.format('ID                '  #
-                    if x_err[0][3] else '', '', width=width_type + 2 - len('sobject'))]
+        messages = ['', 'index {} sobject{:{width}s}error_info'.format(
+            ('ID' + 16 * ' ' if x_err[0][3] else ''), '', width=(width_type + 2 - len('sobject')))]
         for i, errs, type_, id_ in x_err:
             field_info = 'FIELDS: {}'.format(errs[0]['fields']) if errs[0].get('fields') else ''
             msg = '{:5d} {} {:{width_type}s}  {}: {} {}'.format(
@@ -457,11 +458,12 @@ class Cursor(object):
     From SDFC documentation (combined from SOQL, REST, APEX)
     Query results are returned from SFDC by blocks of 2000 rows, by default.
     It is guaranted that the size of result block is not smaller than 200 rows,
-    and not longer than 2000 rows. A remote locator remains open until all rows
-    are consumed. A maximum of 10 open locators per user are allowed, otherwise
-    the oldest locator (cursor) is deleted by SFDC. Query locators older than
-    15 minutes are also deleted. The query locator works without transactions
-    and it should be expected that the data after 2000 rows could affected by
+    and not longer than 2000 rows.
+    - A maximum of 10 open locators per user are available. The oldest locator
+      (cursor) is deleted then by SFDC.
+    - Query locators older than 15 minutes are deleted. (usually after much longer time)
+    - The query locator works without transactions
+    and it should be expected that the data after 2000 rows could be affected by
     later updates and may not match the `where` condition.
 
     The local part of the cursor is only an index into the last block of 2000
@@ -476,88 +478,86 @@ class Cursor(object):
     def __init__(self, connection):
         # DB API attributes (public, ordered by documentation PEP 249)
         self.description = None
-        self.rowcount = -1
+        self.rowcount = -1  # set to non-negative by SELECT INSERT UPDATE DELETE
         self.arraysize = 1  # writable, but ignored finally
         # db api extensions
-        self.rownumber = None
+        self.rownumber = None  # cursor position index
         self.connection = connection
         self.messages = []
-        self.lastrowid = None
+        self.lastrowid = None  # used for INSERT id
         self.errorhandler = connection.errorhandler
         # private
         self.row_factory = lambda x: x  # standard dict
+        self._chunk = not_executed_yet()
+        self._chunk_offset = None
         self._next_records_url = None
-        self._results = not_executed_yet()
+        self.handle = None
+        self.qquery = None
+        self._raw_iterator = None
+        self._iter = None
 
     # -- DB API methods
 
     # .callproc(...)  noit implemented
 
     def close(self):
-        if self._next_records_url:
-            # TODO remote query locator is open and can not be easily closed without consuming all data
-            pass
         self._clean()
 
-    def execute(self, sql, parameters=None, queryall=False):
+    def execute(self, soql, parameters=None, queryall=False):
         self._clean()
-        sqltype = sql.split(None, 1)[0].upper()
-        _ = sqltype  # NOQA
-        if sqltype == 'SELECT':
-            self.execute_select(sql, parameters, queryall=queryall)
-        else:
-            raise ProgrammingError
-
         parameters = parameters or []
-        self._clean()
-        sqltype = re.match(r'\s*(SELECT|INSERT|UPDATE|DELETE)\b', sql, re.I).group().upper()
-        # TODO
+        sqltype = soql.split(None, 1)[0].upper()
         if sqltype == 'SELECT':
-            self.qquery = QQuery(sql)
-            self.description = [(alias, None, None, None, name) for alias, name in
-                                zip(self.qquery.aliases, self.qquery.fields)]
-            # TODO
-            cur = CursorWrapper(self.connection)
-            self._resp = cur.execute_select(sql, parameters)
-            self.iterator = self.qquery.parse_rest_response(self._resp, self)
-            self.rowcount = self._resp.json(parse_float=decimal.Decimal)['totalSize']
-            self.rownumber = 0
+            self.execute_select(soql, parameters, queryall=queryall)
         else:
-            print("Not implemented: %s" % sql)
+            # INSERT UPDATE DELETE EXPLAIN
+            raise ProgrammingError
 
     def executemany(self, operation, seq_of_parameters):
         self._clean()
         for param in seq_of_parameters:
             self.execute(operation, param)
 
-    def __iter__(self):
-        self._check()
-        while True:
-            for row in self._results:
-                yield self.row_factory(row)
-                self.rownumber += 1
-            if not self._next_records_url:
-                break
-            data = self.handle_api_exceptions('GET', self._next_records_url).json()
-            self._next_records_url = data['nextRecordsUrl']
-            self._results = data['records']
-            del data
-
     def fetchone(self):
-        self._check()
+        # self._check()
         return next(self, None)
 
     def fetchmany(self, size=None):
-        self._check()
+        # self._check()
         if size is None:
             size = self.arraysize
         return list(islice(self, size))
 
     def fetchall(self):
-        self._check()
-        return [row for row in self]
+        # self._check()
+        return list(self)
 
-    # nextset()  not implemented
+    def scroll(self, value, mode='relative'):
+        # TODO It is a beta based on an undocumented information
+        # The undocumented structure of 'nextRecordsUrl' is
+        #     'query/{query_id}-{offset}'  e.g.
+        #     '/services/data/v44.0/query/01gM000000zr0N0IAI-3012'
+        warnings.warn("cursor.scroll is based on an undocumented info. Long "
+                      "jump in a big query may be unsupported.")
+        assert mode in ('absolute', 'relative')
+        # The possible offset range is from 0 to resp.json()['totalSize']
+        # An exception IndexError should be raised if the offset is invalid [PEP 429]
+        # but this will simply pass the original exception from SFDC:
+        # "SalesforceError: INVALID_QUERY_LOCATOR"
+
+        new_offset = int(value) + (0 if mode == 'absolute' else self.rownumber)
+        if not self._chunk_offset <= new_offset < self._chunk_offset + len(self._chunk):
+            url = '{}-{}'.format(self.handle, new_offset)
+            self.query_more(url)
+            self._chunk_offset = new_offset
+        self._raw_iterator = iter(self._chunk)
+        if new_offset != self._chunk_offset:
+            rel_offs = new_offset - self._chunk_offset
+            next(islice(self._raw_iterator, rel_offs, rel_offs), None)
+        self.rownumber = new_offset
+        self._iter = iter(self._gen())
+
+    # .nextset()  not implemented
 
     def setinputsizes(self, sizes):
         pass  # this method is allowed to do nothing
@@ -565,23 +565,54 @@ class Cursor(object):
     def setoutputsize(self, size, column=None):
         pass  # this method is allowed to do nothing
 
+    def __next__(self):
+        next(self._iter)
+
+    next = __next__  # Python 2
+
     # -- private methods
 
-    def execute_select(self, sql, parameters, queryall=False):
-        processed_sql = str(sql) % tuple(arg_to_soql(x) for x in parameters)
+    def __iter__(self):
+        return self
+
+    def _gen(self):
+        while True:
+            self._raw_iterator = iter(self._chunk)
+            for row in self.qquery.parse_rest_response(self._raw_iterator):
+                yield self.row_factory(row)
+                self.rownumber += 1
+            if not self._next_records_url:
+                break
+            new_offset = self._chunk_offset + len(self._chunk)
+            self.query_more(self._next_records_url)
+            self._chunk_offset = new_offset
+
+    def execute_select(self, soql, parameters, queryall=False):
+        processed_sql = str(soql) % tuple(arg_to_soql(x) for x in parameters)
         service = 'query' if queryall else 'queryAll'
+
+        self.qquery = QQuery(soql)
+        # TODO better description
+        self.description = [(alias, None, None, None, name) for alias, name in
+                            zip(self.qquery.aliases, self.qquery.fields)]
+
         url_part = '?'.join((service, urlencode(dict(q=processed_sql))))
-        data = self.handle_api_exceptions('GET', url_part).json()
-        self.description = ()  # TODO
-        self.rowcount = data['totalSize']
+        self.query_more(url_part)
+        self._chunk_offset = 0
         self.rownumber = 0
-        self._next_records_url = data['nextRecordsUrl']
-        self._results = data['records']
+        self.handle = self._next_records_url.split('-')[0]
+
+    def query_more(self, nextRecordsUrl):  # pylint:disable=invalid-name
+        self._check()
+        ret = self.handle_api_exceptions('GET', nextRecordsUrl).json()
+        self.rowcount = ret['totalSize']  # may be more accurate than the initial approximate value
+        self._chunk = ret['records']
+        self._next_records_url = ret.get('nextRecordsUrl')
 
     def _check(self):
         if not self.connection:
             raise InterfaceError("Cursor Closed")
-        self.connection.last_used_cursor = self  # is a weakref
+        self.connection.last_used_cursor = self  # it is set into weakref
 
     def _clean(self):
         self.description = None
@@ -590,7 +621,12 @@ class Cursor(object):
         del self.messages[:]
         self.lastrowid = None
         self._next_records_url = None
-        self._results = not_executed_yet()
+        self._chunk = not_executed_yet()
+        self._chunk_offset = None
+        self.handle = None
+        self.qquery = None
+        self._raw_iterator = None
+        self._iter = None
         self._check()
 
     def handle_api_exceptions(self, method, *url_parts, **kwargs):

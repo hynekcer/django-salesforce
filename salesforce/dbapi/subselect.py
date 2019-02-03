@@ -1,8 +1,8 @@
 """Parse SOQL, including subqueries
 
-Subqueries are (fortunately for the implementation) very restricted by
-[Force.com SOQL]
+Subqueries are very restricted by [Force.com SOQL]
 (https://resources.docs.salesforce.com/sfdc/pdf/salesforce_soql_sosl.pdf)
+(It's lucky for our implementation)
 - "only root queries support aggregate expressions"
 - Subqueries can not be in "OR" condition, because it is an additional level.
 
@@ -13,7 +13,7 @@ These expressions can be supported here, but currently unimplemented:
 Especially DISTANCE and GEOLOCATION are not trivial because they would
 require a combined parser for parentheses and commas.
 
-Unsupported GROUP BY ROLLUP and GROUP BY CUBE
+Unsupported GROUP BY ROLLUP and GROUP BY CUBE (their syntax for reports).
 """
 import datetime
 import re
@@ -34,12 +34,21 @@ pattern_groupby = re.compile(r'\bGROUP BY\b', re.I)
 
 
 class QQuery(object):
-    """Parse the SOQL query to an object that helps to correctly interpret the response
+    """Parse the SOQL query to an object useful to correctly interpret a response.
 
-    parse_rest_response:  parse the response
+    public methods:
+        parse_rest_response(response, cursor=None, row_type=list):
+
+            Parse the response to rows of the tape list or dict
+
+            The cursor that created the response is necessary
     """
+    # It can be later splitted to more specialized objects, if QQuery become
+    # extended and too complicated.
     # type of query: QRootQuery, QFieldSubquery, QWhereSubquery
     # type of field: QField, QAggregation, QFieldSubquery
+
+    # pylint:disable=too-few-public-methods,too-many-instance-attributes
 
     def __init__(self, soql=None):
         self.soql = None
@@ -61,6 +70,7 @@ class QQuery(object):
 
     def _from_sql(self, soql):
         """Create Force.com SOQL tree structure from SOQL"""
+        # pylint:disable=too-many-branches,too-many-nested-blocks
         assert not self.soql, "Don't use _from_sql method directly"
         self.soql = soql
         soql, self.subqueries = split_subquery(soql)
@@ -111,7 +121,6 @@ class QQuery(object):
                 self.aliases.append(alias)
                 self.fields.append(field)
         # TODO it is not currently necessary to parse the exta_soql
-        pass
 
     def _make_flat(self, row_dict, path, subroots):
         """Replace the nested dict objects by a flat dict with keys "object.object.name"."""
@@ -120,8 +129,8 @@ class QQuery(object):
         for k, v in row_dict.items():
             klc = k.lower()  # "key lower case"
             if (not (isinstance(v, dict) and 'attributes' in v)
-                    or ('done' in v and 'records' in v and 'totalSize' in v)
-                ):
+                    or ('done' in v and 'records' in v and 'totalSize' in v)):
+                # :
                 if klc not in subroots:
                     out[klc] = v
                 else:
@@ -136,47 +145,47 @@ class QQuery(object):
                     out[k.lower() + '.' + sub_k] = sub_v
         return out
 
-    def parse_rest_response(self, response, cursor=None, row_type=list):
+    def parse_rest_response(self, records, cursor=None, row_type=list):
         """Parse the REST API response to DB API cursor flat response"""
-        resp = response.json()
         if self.is_plain_count:
             # result of "SELECT COUNT() FROM ... WHERE ..."
-            assert resp['records'] == []
-            yield [resp['totalSize']]
+            assert records == []  # TODO
+            yield [cursor.rowcount]  # originally [resp.json()['totalSize']]
         else:
             while True:
-                for row_deep in resp['records']:
+                for row_deep in records:
                     assert self.is_aggregation == (row_deep['attributes']['type'] == 'AggregateResult')
                     row_flat = self._make_flat(row_deep, path=(), subroots=self.subroots)
-                    # TODO really "or x['done']"?
+                    # TODO Will be the expression "or x['done']" really correct also for long subrequests?
                     assert all(not isinstance(x, dict) or x['done'] for x in row_flat)
                     if issubclass(row_type, dict):
                         yield {k: fix_data_type(row_flat[k.lower()]) for k in self.aliases}
                     else:
                         yield [fix_data_type(row_flat[k.lower()]) for k in self.aliases]
-                if not resp['done']:
-                    if not cursor:
-                        raise ProgrammingError("Must get a cursor")
-                    resp = cursor.query_more(resp['nextRecordsUrl']).json()
-                else:
-                    break
+                # if not resp['done']:
+                #     if not cursor:
+                #         raise ProgrammingError("Must get a cursor")
+                #     resp = cursor.query_more(resp['nextRecordsUrl']).json()
+                # else:
+                #     break
+                break
 
 
 SALESFORCE_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f+0000'
 SF_DATETIME_PATTERN = re.compile(r'[1-3]\d{3}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-6]\d.\d{3}\+0000$')
-text_type = type(u'')
+TextType = type(u'')
 
 
 def fix_data_type(data, tzinfo=None):
-    # this is a demo function. The data type shoud be read from some
-    # field mapping, not to guess by regexp. Only a datetime field
-    # specific enough to be acceptable.
-    if isinstance(data, text_type) and SF_DATETIME_PATTERN.match(data):
-        d = datetime.datetime.strptime(data, SALESFORCE_DATETIME_FORMAT)
-        d = d.replace(tzinfo=pytz.utc)
-        return d
-    else:
-        return data
+    # this is a simplified function. The data type shoud be finally read
+    # from some reliable field mapping, not to guess by regexp like here.
+    # Only a DateTime field has so specific regexp that the guess is
+    # acceptable.
+    if isinstance(data, TextType) and SF_DATETIME_PATTERN.match(data):
+        datim = datetime.datetime.strptime(data, SALESFORCE_DATETIME_FORMAT)
+        datim = datim.replace(tzinfo=tzinfo or pytz.utc)
+        return datim
+    return data
 
 
 def mark_quoted_strings(sql):
@@ -282,5 +291,5 @@ def simplify_expression(txt):
                                    txt.strip())))
     # add space before some "(" and after some ")"
     return re.sub(r'\)(?=\w)', ') ',
-                  re.sub(r'(,|\b(?:{}))\('.format('|'.join(RESERVED_WORDS)), '\\1 (',
-                         minimal))
+                  re.sub(r'(,|\b(?:{}))\('.format('|'.join(RESERVED_WORDS)), '\\1 (', minimal)
+                  )
