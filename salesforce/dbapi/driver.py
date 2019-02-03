@@ -632,6 +632,7 @@ class Cursor(object):
         self._check()
 
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
+        log.info("request %s %s", method, '/'.join(url_parts))
         return self.connection.handle_api_exceptions(method, *url_parts, cursor_context=self, **kwargs)
 
 

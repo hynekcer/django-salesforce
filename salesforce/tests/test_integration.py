@@ -352,7 +352,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_decimal_precision(self):
-        """Verify the same precision of saved and retrived DecimalField
+        """Verify the exact precision of the saved and retrived DecimalField
         """
         product = Product(Name="Test Product")
         product.save()
@@ -360,13 +360,15 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         # The price for a product must be set in the standard price book.
         # http://www.salesforce.com/us/developer/docs/api/Content/sforce_api_objects_pricebookentry.htm
         pricebook = Pricebook.objects.get(Name="Standard Price Book")
+        unit_price = Decimal('1234.56')
         saved_pricebook_entry = PricebookEntry(Product2=product, Pricebook2=pricebook,
-                                               UnitPrice=Decimal('1234.56'), UseStandardPrice=False)
+                                               UnitPrice=unit_price, UseStandardPrice=False)
         saved_pricebook_entry.save()
         retrieved_pricebook_entry = PricebookEntry.objects.get(pk=saved_pricebook_entry.pk)
 
         try:
-            self.assertEqual(saved_pricebook_entry.UnitPrice, retrieved_pricebook_entry.UnitPrice)
+            self.assertEqual(saved_pricebook_entry.UnitPrice, unit_price)
+            self.assertEqual(retrieved_pricebook_entry.UnitPrice, unit_price)
         finally:
             retrieved_pricebook_entry.delete()
             product.delete()
@@ -880,8 +882,19 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
 
     @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_incomplete_raw(self):
-        last_name = Contact.objects.raw("select id from Contact")[0].last_name
-        self.assertGreater(len(last_name), 0)
+        """Test that omitted model fields can be queried by dot."""
+        print('***')
+        # with self.lazy_assert_n_requests(2):  # problem - Why too much requests?
+        qs = Contact.objects.raw("select id from Contact")[:]
+        print('***')
+        with self.lazy_assert_n_requests(1):  # OK
+            last_name = qs[0].last_name
+        self.assertTrue(last_name and 'last' not in last_name.lower())
+        print('***')
+        with self.lazy_assert_n_requests(1):  # problem - no request
+            first_name = qs[0].first_name
+        print('***')
+        self.lazy_check()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_filter_by_more_fk_to_the_same_model(self):
