@@ -37,11 +37,14 @@ class QQuery(object):
     """Parse the SOQL query to an object useful to correctly interpret a response.
 
     public methods:
-        parse_rest_response(response, cursor=None, row_type=list):
+        parse_rest_response(records, rowcount, row_type=list):
 
             Parse the response to rows of the tape list or dict
+            parameters:
+                records: response['records'] or a slice of its iterator
+                rowcount: response['totalSize']
 
-            The cursor that created the response is necessary
+            The `cursor` that created the response can be necessary, but currently unused
     """
     # It can be later splitted to more specialized objects, if QQuery become
     # extended and too complicated.
@@ -145,12 +148,12 @@ class QQuery(object):
                     out[k.lower() + '.' + sub_k] = sub_v
         return out
 
-    def parse_rest_response(self, records, cursor=None, row_type=list):
+    def parse_rest_response(self, records, rowcount, row_type=list):
         """Parse the REST API response to DB API cursor flat response"""
         if self.is_plain_count:
             # result of "SELECT COUNT() FROM ... WHERE ..."
-            assert records == []  # TODO
-            yield [cursor.rowcount]  # originally [resp.json()['totalSize']]
+            assert list(records) == []
+            yield rowcount  # originally [resp.json()['totalSize']]
         else:
             while True:
                 for row_deep in records:

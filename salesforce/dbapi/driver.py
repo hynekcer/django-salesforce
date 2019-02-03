@@ -566,7 +566,7 @@ class Cursor(object):
         pass  # this method is allowed to do nothing
 
     def __next__(self):
-        next(self._iter)
+        return next(self._iter)
 
     next = __next__  # Python 2
 
@@ -578,7 +578,7 @@ class Cursor(object):
     def _gen(self):
         while True:
             self._raw_iterator = iter(self._chunk)
-            for row in self.qquery.parse_rest_response(self._raw_iterator):
+            for row in self.qquery.parse_rest_response(self._raw_iterator, self.rowcount):
                 yield self.row_factory(row)
                 self.rownumber += 1
             if not self._next_records_url:
@@ -589,7 +589,7 @@ class Cursor(object):
 
     def execute_select(self, soql, parameters, queryall=False):
         processed_sql = str(soql) % tuple(arg_to_soql(x) for x in parameters)
-        service = 'query' if queryall else 'queryAll'
+        service = 'query' if not queryall else 'queryAll'
 
         self.qquery = QQuery(soql)
         # TODO better description
@@ -600,7 +600,9 @@ class Cursor(object):
         self.query_more(url_part)
         self._chunk_offset = 0
         self.rownumber = 0
-        self.handle = self._next_records_url.split('-')[0]
+        if self._next_records_url:
+            self.handle = self._next_records_url.split('-')[0]
+        self._iter = iter(self._gen())
 
     def query_more(self, nextRecordsUrl):  # pylint:disable=invalid-name
         self._check()
