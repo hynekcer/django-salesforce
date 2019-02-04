@@ -88,8 +88,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.introspection = DatabaseIntrospection(self)
             self.validation = DatabaseValidation(self)
         self._is_sandbox = None
-        # debug attributes and test attributes
-        self.last_chunk_len = None  # uppdated by Cursor class
 
     @property
     def sf_session(self):
@@ -146,5 +144,5 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if self._is_sandbox is None:
             cur = self.cursor()
             cur.execute("SELECT IsSandbox FROM Organization")
-            self._is_sandbox = cur.fetchone()['IsSandbox']
+            self._is_sandbox = cur.fetchone()[0]
         return self._is_sandbox

@@ -1,7 +1,6 @@
 """
 Customized Query, RawQuery  (like django.db.models.sql.query)
 """
-from django.db import connections
 from django.db.models import Count
 from django.db.models.sql import Query, RawQuery, constants
 
@@ -9,29 +8,31 @@ from salesforce.backend import DJANGO_20_PLUS
 
 
 class SalesforceRawQuery(RawQuery):
-    def clone(self, using):
-        return SalesforceRawQuery(self.sql, using, params=self.params)
+    pass
 
-    def get_columns(self):
-        if self.cursor is None:
-            self._execute_query()
-        converter = connections[self.using].introspection.table_name_converter
-        if self.cursor.rowcount > 0:
-            return [converter(col) for col in self.cursor.first_row.keys() if col != 'attributes']
-        # TODO hy: A more general fix is desirable with rewriting more code.
-        return ['Id']  # originally [SF_PK] before Django 1.8.4
-
-    def _execute_query(self):
-        self.cursor = connections[self.using].cursor()
-        self.cursor.prepare_query(self)
-        self.cursor.execute(self.sql, self.params)
-
-    def __repr__(self):
-        return "<SalesforceRawQuery: %s; %r>" % (self.sql, tuple(self.params))
-
-    def __iter__(self):
-        for row in super(SalesforceRawQuery, self).__iter__():
-            yield [row[k] for k in self.get_columns()]
+#     def clone(self, using):
+#         return SalesforceRawQuery(self.sql, using, params=self.params)
+#
+#     def get_columns(self):
+#         if self.cursor is None:
+#             self._execute_query()
+#         converter = connections[self.using].introspection.table_name_converter
+#         if self.cursor.rowcount > 0:
+#             return [converter(col) for col in self.cursor.first_row.keys() if col != 'attributes']
+#         # TODO hy: A more general fix is desirable with rewriting more code.
+#         return ['Id']  # originally [SF_PK] before Django 1.8.4
+#
+#     def _execute_query(self):
+#         self.cursor = connections[self.using].cursor()
+#         self.cursor.prepare_query(self)
+#         self.cursor.execute(self.sql, self.params)
+#
+#     def __repr__(self):
+#         return "<SalesforceRawQuery: %s; %r>" % (self.sql, tuple(self.params))
+#
+#     def __iter__(self):
+#         for row in super(SalesforceRawQuery, self).__iter__():
+#             yield [row[k] for k in self.get_columns()]
 
 
 class SalesforceQuery(Query):
@@ -41,7 +42,6 @@ class SalesforceQuery(Query):
     def __init__(self, *args, **kwargs):
         super(SalesforceQuery, self).__init__(*args, **kwargs)
         self.is_query_all = False
-        self.first_chunk_len = None
         self.max_depth = 1
 
     def clone(self, klass=None, memo=None):  # pylint: disable=arguments-differ

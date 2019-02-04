@@ -43,12 +43,12 @@ class SalesforceManager(manager.Manager):
             return self.get_queryset().using(alias)
         return super(SalesforceManager, self).using(alias)
 
-    def raw(self, raw_query, params=None, translations=None):
-        if router.is_sf_database(self.db):
-            q = models_sql_query.SalesforceRawQuery(raw_query, self.db, params)
-            return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q,
-                                               params=params, using=self.db)
-        return super(SalesforceManager, self).raw(raw_query, params=params, translations=translations)
+    # def raw(self, raw_query, params=None, translations=None):
+    #     if router.is_sf_database(self.db):
+    #         q = models_sql_query.SalesforceRawQuery(raw_query, self.db, params)
+    #         return query.SalesforceRawQuerySet(raw_query=raw_query, model=self.model, query=q,
+    #                                            params=params, using=self.db)
+    #     return super(SalesforceManager, self).raw(raw_query, params=params, translations=translations)
 
     def query_all(self):
         if router.is_sf_database(self.db):

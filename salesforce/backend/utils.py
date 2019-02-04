@@ -4,7 +4,6 @@ CursorWrapper (like django.db.backends.utils)
 import datetime
 import decimal
 import logging
-from itertools import islice
 
 import pytz
 from django.conf import settings
@@ -18,13 +17,8 @@ from salesforce.backend import DJANGO_111_PLUS
 from salesforce.backend.operations import DefaultedOnCreate
 from salesforce.dbapi.driver import (
     DatabaseError, merge_dict,
-    register_conversion, arg_to_soql, arg_to_json, SALESFORCE_DATETIME_FORMAT)
+    register_conversion, arg_to_json, SALESFORCE_DATETIME_FORMAT)
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE, SF_PK
-
-try:
-    from urllib.parse import urlencode
-except ImportError:
-    from urllib import urlencode
 
 log = logging.getLogger(__name__)
 
@@ -161,11 +155,9 @@ class CursorWrapper(object):
         self.db = db
         self.query = None
         self.session = db.sf_session
-        # A consistent value of empty self.results after execute will be `iter([])`
-        self.results = None
         self.rowcount = None
         self.first_row = None
-        self.lastrowid = None  # TODO move to dbapi.driver
+        self.lastrowid = None  # not moved to driver because INSERT is implemented here
         self.cursor = self.db.connection.cursor()
 
     def __enter__(self):
@@ -184,8 +176,9 @@ class CursorWrapper(object):
         """
         # pylint:disable=too-many-branches
         self.rowcount = None
+        response = None
         if self.query is None:
-            response = self.execute_select(q, args)
+            self.execute_select(q, args)
         else:
             response = self.execute_django(q, args)
             if isinstance(response, list):
@@ -221,16 +214,8 @@ class CursorWrapper(object):
             else:
                 raise DatabaseError(data)
 
-            if q.upper().startswith('SELECT COUNT() FROM'):
-                # COUNT() queries in SOQL are a special case, as they don't actually return rows
-                self.results = iter([[self.rowcount]])
-            else:
-                if self.query:
-                    self.query.first_chunk_len = len(data['records'])
+            if not q.upper().startswith('SELECT COUNT() FROM'):
                 self.first_row = data['records'][0] if data['records'] else None
-                self.results = self.query_results(data)
-        else:
-            self.results = iter([])
 
     def prepare_query(self, query):
         self.query = query
@@ -239,6 +224,7 @@ class CursorWrapper(object):
         """
         Fixed execute for queries coming from Django query compilers
         """
+        response = None
         if isinstance(self.query, subqueries.InsertQuery):
             response = self.execute_insert(self.query)
         elif isinstance(self.query, subqueries.UpdateQuery):
@@ -246,32 +232,27 @@ class CursorWrapper(object):
         elif isinstance(self.query, subqueries.DeleteQuery):
             response = self.execute_delete(self.query)
         elif isinstance(self.query, RawQuery):
-            response = self.execute_select(q, args)
+            self.execute_select(q, args)
         elif isinstance(self.query, Query):
-            response = self.execute_select(q, args)
-            # print("response : %s" % response.text)
-        elif q == MIGRATIONS_QUERY_TO_BE_IGNORED:
-            response = self.execute_select(q, args)
+            self.execute_select(q, args)
         else:
             raise DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
         return response
 
     def execute_select(self, q, args):
-        processed_sql = str(q) % tuple(arg_to_soql(x) for x in args)
-        service = 'query' if not getattr(self.query, 'is_query_all', False) else 'queryAll'
-        url_part = '/?'.join((service, urlencode(dict(q=processed_sql))))
-        log.debug(processed_sql)
         if q != MIGRATIONS_QUERY_TO_BE_IGNORED:
             # normal query
-            return self.handle_api_exceptions('GET', url_part)
-        # Nothing queried about django_migrations to SFDC and immediately responded that
-        # nothing about migration status is recorded in SFDC.
-        #
-        # That is required by "makemigrations" to accept this query.
-        # Empty results are possible.
-        # (It could be eventually replaced by: "SELECT app__c, Name FROM django_migrations__c")
-        self.results = iter([])
-        return
+            self.cursor.execute(q, args)
+        else:
+            # Nothing queried about django_migrations to SFDC and immediately responded that
+            # nothing about migration status is recorded in SFDC.
+            #
+            # That is required by "makemigrations" to accept this query.
+            # Empty results are possible.
+            # (It could be eventually replaced by: "SELECT app__c, Name FROM django_migrations__c")
+            self.cursor._iter = iter([])  # pylint:disable=protected-access
+            self.cursor.rowcount = 0
+        self.rowcount = self.cursor.rowcount
 
     def query_more(self, nextRecordsUrl):
         return self.handle_api_exceptions('GET', nextRecordsUrl)
@@ -330,7 +311,8 @@ class CursorWrapper(object):
             sql = "SELECT Id FROM {} WHERE {}".format(query.model._meta.db_table, where_sql)
         with self.db.cursor() as cur:
             cur.execute(sql, params)
-            return [x['Id'] for x in cur]
+            assert len(cur.description) == 1 and cur.description[0][0] == 'Id'
+            return [x[0] for x in cur]
 
     def execute_update(self, query):
         table = query.model._meta.db_table
@@ -435,30 +417,20 @@ class CursorWrapper(object):
             results = response.json(parse_float=decimal.Decimal)
 
     def __iter__(self):
-        return iter(self.results)
+        return self.cursor
 
     def fetchone(self):
-        """
-        Fetch a single result from a previously executed query.
-        """
-        try:
-            return next(self.results)
-        except StopIteration:
-            return None
+        return self.cursor.fetchone()
 
     def fetchmany(self, size=None):
-        """
-        Fetch multiple results from a previously executed query.
-        """
-        if size is None:
-            size = 200
-        return list(islice(self.results, size))
+        return self.cursor.fetchmany(size=size)
 
     def fetchall(self):
-        """
-        Fetch all results from a previously executed query.
-        """
-        return list(self.results)
+        return self.cursor.fetchall()
+
+    @property
+    def description(self):
+        return self.cursor.description
 
     def close(self):
         self.cursor.close()

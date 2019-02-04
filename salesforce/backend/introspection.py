@@ -251,7 +251,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             cur = self.connection.cursor()
             cur.execute("SELECT MasterLabel FROM LeadStatus "
                         "WHERE IsConverted = True ORDER BY SortOrder LIMIT 1")
-            self._converted_lead_status = cur.fetchone()['MasterLabel']
+            self._converted_lead_status = cur.fetchone()[0]
         return self._converted_lead_status
 
 # pylint:disable=too-few-public-methods

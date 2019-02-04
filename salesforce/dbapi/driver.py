@@ -245,6 +245,8 @@ class RawConnection(object):
     def handle_api_exceptions_inter(self, method, *url_parts, **kwargs):
         """The main (middle) part - it is enough if no error occurs."""
         global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
+        log.info("request %s %s", method, '/'.join(url_parts))
+        # import pdb; pdb.set_trace()  # NOQA
         api_ver = kwargs.pop('api_ver', None)
         url = self.rest_api_url(*url_parts, api_ver=api_ver)
         # The 'verify' option is about verifying TLS certificates
@@ -328,7 +330,7 @@ class RawConnection(object):
         """
         post_data = {'compositeRequest': data, 'allOrNone': True}
         resp = self.handle_api_exceptions('POST', 'composite', json=post_data)
-        comp_resp = resp.json()['compositeResponse']
+        comp_resp = resp.json(parse_float=decimal.Decimal)['compositeResponse']
         is_ok = all(x['httpStatusCode'] < 400 for x in comp_resp)
         if is_ok:
             return resp
@@ -632,7 +634,6 @@ class Cursor(object):
         self._check()
 
     def handle_api_exceptions(self, method, *url_parts, **kwargs):
-        log.info("request %s %s", method, '/'.join(url_parts))
         return self.connection.handle_api_exceptions(method, *url_parts, cursor_context=self, **kwargs)
 
 

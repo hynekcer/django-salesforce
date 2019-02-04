@@ -82,28 +82,46 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_raw(self):
-        """Get the first two contact records.
+        """Read two contacts by raw.
 
         (At least 3 manually created Contacts must exist before these read-only tests.)
         """
-        contacts = Contact.objects.raw(
-            "SELECT Id, LastName, FirstName FROM Contact "
-            "LIMIT 2", translations={'id': 'Id'})
-        self.assertEqual(len(contacts), 2)
-        # It had a side effect that the same assert failed second times.
-        self.assertEqual(len(contacts), 2)
-        '%s' % contacts[0].__dict__  # Check that all fields are accessible
+        with self.lazy_assert_n_requests(1):
+            contacts = list(Contact.objects.raw(
+                "SELECT Id, LastName, FirstName FROM Contact "
+                "LIMIT 2"))
+        with self.lazy_assert_n_requests(0):
+            self.assertEqual(len(contacts), 2)
+            # It had a side effect that the same assert failed second times.
+            self.assertEqual(len(contacts), 2)
+            '%s' % contacts[0].__dict__  # Check that all fields are accessible
+        self.lazy_check()
+
+    @skipUnless(default_is_sf, "Default database should be any Salesforce.")
+    def test_raw_translations(self):
+        """Read a Contact raw and translate it to Lead fields."""
+        contact = Contact.objects.all()[0]
+        false_lead_raw = list(Lead.objects.raw(
+            "SELECT Id, LastName FROM Contact WHERE Id=%s", params=[contact.pk],
+            translations={'LastName': 'Company'}))
+        self.assertEqual(len(false_lead_raw), 1)
+        self.assertEqual(false_lead_raw[0].Company, contact.last_name)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_raw_foreignkey_id(self):
         """Get the first two contacts by raw query with a ForeignKey id field.
         """
-        contacts = Contact.objects.raw(
-            "SELECT Id, LastName, FirstName, OwnerId FROM Contact "
-            "LIMIT 2")
+        with self.lazy_assert_n_requests(1):
+            contacts = list(Contact.objects.raw(
+                "SELECT Id, LastName, FirstName, OwnerId FROM Contact "
+                "LIMIT 2"))
+        len(contacts)
         self.assertEqual(len(contacts), 2)
-        '%s' % contacts[0].__dict__  # Check that all fields are accessible
-        self.assertIn('@', contacts[0].owner.Email)
+        with self.lazy_assert_n_requests(0):
+            '%s' % contacts[0].__dict__  # Check that all fields are accessible
+        with self.lazy_assert_n_requests(1):
+            self.assertIn('@', contacts[0].owner.Email)
+        self.lazy_check()
 
     def test_select_all(self):
         """Get the first two contact records.
@@ -660,6 +678,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             test_product.delete()
             test_product2.delete()
 
+    @expectedFailure   # TODO rewrite it by cursor call
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_z_big_query(self):
         """Test a big query that will be splitted to more requests.
@@ -686,7 +705,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         cursor.execute(sql)
         contacts = cursor.fetchall()
         self.assertEqual(len(contacts), 2)
-        self.assertIn('OwnerId', contacts[0])
+        self.assertTrue(contacts[0][3].startswith('005'), "OwnerId must be an User.")
         cursor.execute(sql)
         self.assertEqual(cursor.fetchone(), contacts[0])
         self.assertEqual(cursor.fetchmany(), contacts[1:])
@@ -700,8 +719,9 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         cursor = connections[sf_alias].cursor()
         cursor.execute(sql)
         contact_aggregate = cursor.fetchone()
-        self.assertTrue('LastName' in contact_aggregate)
-        self.assertGreaterEqual(contact_aggregate['expr0'], 1)
+        self.assertEqual([x[0] for x in cursor.description], ['LastName', 'expr0'])
+        self.assertEqual([type(x) for x in contact_aggregate], [str, int])
+        self.assertGreaterEqual(contact_aggregate[1], 1)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_errors(self):
@@ -883,17 +903,18 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
     @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_incomplete_raw(self):
         """Test that omitted model fields can be queried by dot."""
-        print('***')
         # with self.lazy_assert_n_requests(2):  # problem - Why too much requests?
-        qs = Contact.objects.raw("select id from Contact")[:]
-        print('***')
-        with self.lazy_assert_n_requests(1):  # OK
-            last_name = qs[0].last_name
+        # raw query must contain the primary key (with the right capitalization, currently)
+        with self.lazy_assert_n_requests(1):  # TODO why two requests?
+            ret = list(Contact.objects.raw("select Id from Contact"))
+        with self.lazy_assert_n_requests(1):
+            last_name = ret[0].last_name
         self.assertTrue(last_name and 'last' not in last_name.lower())
-        print('***')
-        with self.lazy_assert_n_requests(1):  # problem - no request
-            first_name = qs[0].first_name
-        print('***')
+        with self.lazy_assert_n_requests(1):
+            first_name = ret[0].first_name
+        with self.lazy_assert_n_requests(0):
+            last_name = ret[0].last_name
+        assert first_name
         self.lazy_check()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
@@ -1099,6 +1120,9 @@ class BasicLeadSOQLTest(TestCase):
         # TODO optimize counting because this can load thousands of records
         count_deleted = Lead.objects.db_manager(sf_alias).query_all(
                 ).filter(IsDeleted=True, LastName="Unittest General").count()
+        import pdb; pdb.set_trace()  # NOQA
+        qq = Lead.objects.db_manager(sf_alias).query_all().all()
+        list(qq)
         if not default_is_sf:
             self.skipTest("Default database should be any Salesforce.")
         self.assertGreaterEqual(count_deleted, 1)
