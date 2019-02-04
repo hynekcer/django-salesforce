@@ -392,6 +392,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             retrieved_pricebook_entry.delete()
             product.delete()
 
+    @expectedFailure
     def test_zero_decimal_places(self):
         """Test that DecimalField with decimal_places=0 is correctly parsed"""
         campaign = Campaign(name='test something', number_sent=3)
