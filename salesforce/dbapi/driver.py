@@ -245,7 +245,7 @@ class RawConnection(object):
     def handle_api_exceptions_inter(self, method, *url_parts, **kwargs):
         """The main (middle) part - it is enough if no error occurs."""
         global request_count  # used only in single thread tests - OK # pylint:disable=global-statement
-        log.info("request %s %s", method, '/'.join(url_parts))
+        # log.info("request %s %s", method, '/'.join(url_parts))
         # import pdb; pdb.set_trace()  # NOQA
         api_ver = kwargs.pop('api_ver', None)
         url = self.rest_api_url(*url_parts, api_ver=api_ver)
@@ -391,7 +391,7 @@ class RawConnection(object):
                 raise NotImplementedError("Method {} not implemended".format(method))
 
             resp = self.handle_api_exceptions(method, 'composite/sobjects', json=post_data)
-        resp_data = resp.json()
+        resp_data = resp.json(parse_float=decimal.Decimal)
 
         x_ok, x_err, x_roll = self._group_results(resp_data, records, all_or_none)
         is_ok = not x_err
@@ -521,17 +521,17 @@ class Cursor(object):
             self.execute(operation, param)
 
     def fetchone(self):
-        # self._check()
+        self._check_data()
         return next(self, None)
 
     def fetchmany(self, size=None):
-        # self._check()
+        self._check_data()
         if size is None:
             size = self.arraysize
         return list(islice(self, size))
 
     def fetchall(self):
-        # self._check()
+        self._check_data()
         return list(self)
 
     def scroll(self, value, mode='relative'):
@@ -608,7 +608,7 @@ class Cursor(object):
 
     def query_more(self, nextRecordsUrl):  # pylint:disable=invalid-name
         self._check()
-        ret = self.handle_api_exceptions('GET', nextRecordsUrl).json()
+        ret = self.handle_api_exceptions('GET', nextRecordsUrl).json(parse_float=decimal.Decimal)
         self.rowcount = ret['totalSize']  # may be more accurate than the initial approximate value
         self._chunk = ret['records']
         self._next_records_url = ret.get('nextRecordsUrl')
@@ -617,6 +617,10 @@ class Cursor(object):
         if not self.connection:
             raise InterfaceError("Cursor Closed")
         self.connection.last_used_cursor = self  # it is set into weakref
+
+    def _check_data(self):
+        if not self._iter:
+            raise ProgrammingError('No previous .execute("select...") before .fetch...()')
 
     def _clean(self):
         self.description = None

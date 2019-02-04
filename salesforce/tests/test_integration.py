@@ -11,6 +11,7 @@ from distutils.util import strtobool  # pylint: disable=no-name-in-module,import
 import datetime
 import logging
 import os
+import re
 import warnings
 
 import pytz
@@ -372,7 +373,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
     def test_decimal_precision(self):
         """Verify the exact precision of the saved and retrived DecimalField
         """
-        product = Product(Name="Test Product")
+        product = Product(Name="test Product")
         product.save()
 
         # The price for a product must be set in the standard price book.
@@ -527,6 +528,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         account_0.save()
         account_1.save()
         try:
+            result_count = 2
             with self.lazy_assert_n_requests(2):
                 ret = Account.objects.filter(Name='test' + uid).delete()
             self.assertEqual(ret, (2, {'example.Account': 2}))
@@ -1120,9 +1122,6 @@ class BasicLeadSOQLTest(TestCase):
         # TODO optimize counting because this can load thousands of records
         count_deleted = Lead.objects.db_manager(sf_alias).query_all(
                 ).filter(IsDeleted=True, LastName="Unittest General").count()
-        import pdb; pdb.set_trace()  # NOQA
-        qq = Lead.objects.db_manager(sf_alias).query_all().all()
-        list(qq)
         if not default_is_sf:
             self.skipTest("Default database should be any Salesforce.")
         self.assertGreaterEqual(count_deleted, 1)
@@ -1153,3 +1152,14 @@ class BasicLeadSOQLTest(TestCase):
             note_1.delete()
             note_2.delete()
             test_contact.delete()
+
+
+def clean_test_data():
+    """Clean test objects after an interrupted test.
+
+    All tests are written so that a failed test should not leave objects,
+    but a test interrupted by debugger or Ctrl-C could do it.
+    """
+    ids = [x for x in Product.objects.filter(Name__startswith='test ')
+           if re.match(r'test [a-z_0-9]+', x.Name)]
+    Product.objects.filter(id__in=ids).delete()

@@ -75,7 +75,7 @@ def prepare_exception(obj, messages, response=None, verbs=None):
     verbs = set(verbs or [])
     known_options = ['method+url']
     if isinstance(messages, (text_type, str)):
-        messages = list(messages)
+        messages = [messages]
     assert isinstance(messages, list)
     assert not verbs.difference(known_options)
 
