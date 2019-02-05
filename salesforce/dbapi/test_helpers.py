@@ -81,7 +81,7 @@ class LazyTestMixin(object):
             msg = original_exception.args[0]
             original_exception = self.LazyAssertionError(
                 '\n'.join((
-                    '\nUse this real traceback and ignore the previous lazy traceback:',
+                    '\nUse the first frame of this real traceback and ignore the previous lazy traceback:',
                     traceback_part_text,
                     '{}: {}'.format(exc_type.__name__, msg),
                 )),

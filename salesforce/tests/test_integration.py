@@ -20,10 +20,11 @@ from django.db import connections
 from django.db.models import Q, Avg, Count, Sum, Min, Max
 from django.test import TestCase
 from django.utils import timezone
-from django.utils.six import PY3
+from django.utils.six import PY3, text_type
 
 import salesforce
 from salesforce import router
+from salesforce.backend import DJANGO_20_PLUS
 from salesforce.backend.test_helpers import (  # NOQA pylint:disable=unused-import
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (
@@ -158,7 +159,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             test_contact.delete()
             test_account.delete()
 
-    # @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_20_PLUS)  # example decorator left for future
+    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_20_PLUS)
     def test_simple_select_related(self):
         """Verify that simple_selct_related does not require additional queries.
         """
@@ -170,7 +171,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             with self.lazy_assert_n_requests(2):
                 qs = Contact.objects.filter(account__Name='sf_test account').simple_select_related('account')
                 contacts = list(qs)
-            with self.lazy_assert_n_requests(0):
+            with self.lazy_assert_n_requests(0):  # this fails in Django 2.0 - not cached
                 [x.account.Name for x in contacts]
             self.assertGreaterEqual(len(contacts), 1)
             self.lazy_check()
@@ -728,7 +729,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         cursor.execute(sql)
         contact_aggregate = cursor.fetchone()
         self.assertEqual([x[0] for x in cursor.description], ['LastName', 'expr0'])
-        self.assertEqual([type(x) for x in contact_aggregate], [str, int])
+        self.assertEqual([type(x) for x in contact_aggregate], [text_type, int])
         self.assertGreaterEqual(contact_aggregate[1], 1)
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
@@ -761,7 +762,8 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         values_list = Contact.objects.values_list('pk', 'first_name', 'last_name')[:2]
         self.assertEqual(len(values_list), 2)
         v0 = values[0]
-        self.assertEqual(values_list[0], (v0['pk'], v0['first_name'], v0['last_name']))
+        # it is a list in Django 2.1, but a tuple in Django 2.0
+        self.assertEqual(list(values_list[0]), [v0['pk'], v0['first_name'], v0['last_name']])
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_double_delete(self):
