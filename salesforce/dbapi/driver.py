@@ -330,7 +330,7 @@ class RawConnection(object):
         """
         post_data = {'compositeRequest': data, 'allOrNone': True}
         resp = self.handle_api_exceptions('POST', 'composite', json=post_data)
-        comp_resp = resp.json(parse_float=decimal.Decimal)['compositeResponse']
+        comp_resp = resp.json()['compositeResponse']
         is_ok = all(x['httpStatusCode'] < 400 for x in comp_resp)
         if is_ok:
             return resp
@@ -391,7 +391,7 @@ class RawConnection(object):
                 raise NotImplementedError("Method {} not implemended".format(method))
 
             resp = self.handle_api_exceptions(method, 'composite/sobjects', json=post_data)
-        resp_data = resp.json(parse_float=decimal.Decimal)
+        resp_data = resp.json()
 
         x_ok, x_err, x_roll = self._group_results(resp_data, records, all_or_none)
         is_ok = not x_err
@@ -505,12 +505,12 @@ class Cursor(object):
     def close(self):
         self._clean()
 
-    def execute(self, soql, parameters=None, queryall=False):
+    def execute(self, soql, parameters=None, query_all=False):
         self._clean()
         parameters = parameters or []
         sqltype = soql.split(None, 1)[0].upper()
         if sqltype == 'SELECT':
-            self.execute_select(soql, parameters, queryall=queryall)
+            self.execute_select(soql, parameters, query_all=query_all)
         else:
             # INSERT UPDATE DELETE EXPLAIN
             raise ProgrammingError
@@ -589,9 +589,9 @@ class Cursor(object):
             self.query_more(self._next_records_url)
             self._chunk_offset = new_offset
 
-    def execute_select(self, soql, parameters, queryall=False):
+    def execute_select(self, soql, parameters, query_all=False):
         processed_sql = str(soql) % tuple(arg_to_soql(x) for x in parameters)
-        service = 'query' if not queryall else 'queryAll'
+        service = 'query' if not query_all else 'queryAll'
 
         self.qquery = QQuery(soql)
         # TODO better description
@@ -608,7 +608,7 @@ class Cursor(object):
 
     def query_more(self, nextRecordsUrl):  # pylint:disable=invalid-name
         self._check()
-        ret = self.handle_api_exceptions('GET', nextRecordsUrl).json(parse_float=decimal.Decimal)
+        ret = self.handle_api_exceptions('GET', nextRecordsUrl).json()
         self.rowcount = ret['totalSize']  # may be more accurate than the initial approximate value
         self._chunk = ret['records']
         self._next_records_url = ret.get('nextRecordsUrl')

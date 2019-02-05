@@ -60,7 +60,6 @@ class MockTest(MockTestCase):
                 {
                     ...
                 }""",))
-        # import pdb; pdb.set_trace() # NOQA
         ret = self.cursor.urls_request()
         self.assertEqual(ret, {})
 

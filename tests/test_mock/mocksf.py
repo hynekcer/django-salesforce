@@ -268,7 +268,6 @@ class MockTestCase(TestCase):
 
         connection = self.sf_connection
         session = connection._sf_session  # pylint:disable=protected-access
-        # import pdb; pdb.set_trace()
         if ok:
             self.assertEqual(session.index, len(session.expected), "Not all expected requests has been used")
         # connection._sf_session, connection._sf_auth = self.save_session_auth

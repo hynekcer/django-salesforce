@@ -61,6 +61,7 @@ class SalesforceQuery(Query):
         self.is_query_all = True
 
     def get_count(self, using):
+        # TODO maybe can be removed soon
         """
         Performs a COUNT() query using the current filter constraints.
         """

@@ -205,6 +205,14 @@ class DecimalField(SfField, models.DecimalField):
                 ret = Decimal(int(ret))
         return ret
 
+    # parameter "context" is for Django 1.11 and older  (the same is in more classes here)
+    def from_db_value(self, value, expression, connection, context=None):
+        # pylint:disable=unused-argument
+        # TODO refactor and move to the driver like in other backends
+        if isinstance(value, float):
+            value = str(value)
+        return self.to_python(value)
+
 
 class FloatField(SfField, models.FloatField):
     """FloatField for Salesforce.
@@ -234,10 +242,17 @@ class DateField(SfField, models.DateField):
     """DateField with sf_read_only attribute for Salesforce."""
     pass
 
+    def from_db_value(self, value, expression, connection, context=None):
+        # pylint:disable=unused-argument
+        return self.to_python(value)
+
 
 class TimeField(SfField, models.TimeField):
     """TimeField with sf_read_only attribute for Salesforce."""
-    pass
+
+    def from_db_value(self, value, expression, connection, context=None):
+        # pylint:disable=unused-argument
+        return self.to_python(value)
 
 
 class ForeignKey(SfField, models.ForeignKey):

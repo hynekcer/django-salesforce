@@ -24,7 +24,6 @@ from django.utils.six import PY3
 
 import salesforce
 from salesforce import router
-from salesforce.backend import DJANGO_20_PLUS, DJANGO_22_PLUS
 from salesforce.backend.test_helpers import (  # NOQA pylint:disable=unused-import
     expectedFailure, expectedFailureIf, skip, skipUnless)
 from salesforce.backend.test_helpers import (
@@ -159,7 +158,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             test_contact.delete()
             test_account.delete()
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_20_PLUS)
+    # @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_20_PLUS)  # example decorator left for future
     def test_simple_select_related(self):
         """Verify that simple_selct_related does not require additional queries.
         """
@@ -392,7 +391,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             retrieved_pricebook_entry.delete()
             product.delete()
 
-    @expectedFailure
     def test_zero_decimal_places(self):
         """Test that DecimalField with decimal_places=0 is correctly parsed"""
         campaign = Campaign(name='test something', number_sent=3)
@@ -681,16 +679,23 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
             test_product.delete()
             test_product2.delete()
 
-    @expectedFailure   # TODO rewrite it by cursor call
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
     def test_z_big_query(self):
         """Test a big query that will be splitted to more requests.
 
-        Test it as late as possible when
+        Test it as late as possible.
         """
-        all_leads = Lead.objects.query_all()
-        leads_list = list(all_leads)
-        if all_leads.query.first_chunk_len == len(leads_list):
+        cur = connections[sf_alias].cursor()
+        cursor = cur.cursor
+        cursor.execute("SELECT Id, Name FROM Lead", query_all=True)
+        first_lead = cursor.fetchone()
+        if first_lead:
+            first_chunk_len = len(cursor._chunk)
+            leads_list = [first_lead] + cursor.fetchall()
+        else:
+            first_chunk_len = 0
+            leads_list = []
+        if first_chunk_len == len(leads_list):
             self.assertLessEqual(len(leads_list), 2000, "Obsoleted constants")
             log.info("Not enough Leads accumulated (currently %d including deleted) "
                      "in the last two weeks that are necessary for splitting the "
@@ -735,7 +740,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         with QuietSalesforceErrors(sf_alias):
             self.assertRaises(salesforce.backend.base.SalesforceError, list, bad_queryset)
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_queryset_values(self):
         """Test list of dict qs.values() and list of tuples qs.values_list()
         """
@@ -845,7 +849,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
     #    list(Contact.objects.raw("select Count() from Contact"))
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_only_fields(self):
         """Verify that access to "only" fields doesn't require a request, but others do.
         """
@@ -890,7 +893,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         self.lazy_check()
 
     @skipUnless(default_is_sf, "Default database should be any Salesforce.")
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_defer_fields(self):
         """Verify that access to a deferred field requires a new request, but others don't.
         """
@@ -903,7 +905,6 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         self.lazy_check()
         _  # NOQA
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS)
     def test_incomplete_raw(self):
         """Test that omitted model fields can be queried by dot."""
         # with self.lazy_assert_n_requests(2):  # problem - Why too much requests?
@@ -1115,7 +1116,6 @@ class BasicLeadSOQLTest(TestCase):
         self.assertEqual(test_lead.FirstName, 'John')
         self.assertEqual(test_lead.Company, company_orig)
 
-    @expectedFailureIf(QUIET_KNOWN_BUGS and DJANGO_22_PLUS)
     def test_query_all_deleted(self):
         """Test query for deleted objects (queryAll resource).
         """
