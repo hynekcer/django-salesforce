@@ -17,6 +17,8 @@ experimental.
 Unpublished
 -----------
 * Fix: Backward compatibility with old migrations. #275
+* Fix: Simplify output of inspectdb if a choice is too huge
+  or if tables are restricted by table filter. 
 
 
 [3.1] 2020-08-05
