@@ -9,6 +9,7 @@ but some functionality can be moved to the driver and not duplicated
 """
 import decimal
 import logging
+import re
 import warnings
 from itertools import islice
 from typing import (
@@ -73,8 +74,6 @@ log = logging.getLogger(__name__)
 
 
 DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
-
-MIGRATIONS_QUERY_TO_BE_IGNORED = "SELECT django_migrations.app, django_migrations.name FROM django_migrations"
 
 
 def extract_insert_values(query: 'SalesforceInsertQuery') -> List[Dict[str, Any]]:  # TODO can be more strict
@@ -242,20 +241,19 @@ class CursorWrapper:
             raise DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
 
     def execute_select(self, soql: str, args: Iterable[Any]) -> None:
-        if soql != MIGRATIONS_QUERY_TO_BE_IGNORED:
+        query_all = False
+        tooling_api = False
+        if soql.endswith('FROM django_migrations'):
+            # "SELECT django_migrations.id, django_migrations.app, django_migrations.name, django_migrations.applied "
+            # "FROM django_migrations"
+            soql = re.sub(r'(\.(?:app\b|name|applied))', '\\1__c', soql)
+            soql = soql.replace('django_migrations', 'django_migrations__c')
+        elif self.query:
             # normal Django query
-            query_all = self.query and self.query.sf_params.query_all
-            tooling_api = self.query and self.query.model._meta.sf_tooling_api_model  # type: ignore[union-attr]
-            self.cursor.execute(soql, args, query_all=query_all, tooling_api=tooling_api)
-        else:
-            # Nothing queried about django_migrations to SFDC and immediately responded that
-            # nothing about migration status is recorded in SFDC.
-            #
-            # That is required by "makemigrations" to accept this query.
-            # Empty results are possible.
-            # (It could be eventually replaced by: "SELECT app__c, Name FROM django_migrations__c")
-            self.cursor._iter = iter([])  # pylint:disable=protected-access
-            self.cursor.rowcount = 0
+            assert self.query.model
+            query_all = self.query.sf_params.query_all
+            tooling_api = self.query.model._meta.sf_tooling_api_model  # type: ignore[attr-defined]
+        self.cursor.execute(soql, args, query_all=query_all, tooling_api=tooling_api)
         self.rowcount = self.cursor.rowcount
 
     def our_fix_default(self, obj_json_data: Dict[str, Any]) -> None:
@@ -272,7 +270,8 @@ class CursorWrapper:
         table = query.model._meta.db_table
         post_data = extract_insert_values(query)
         if table == 'django_migrations':
-            return
+            table = 'django_migrations__c'
+            post_data = [{k + '__c': v for k, v in row.items()} for row in post_data]
         obj_url = self.db.connection.rest_api_url('sobjects', table, relative=True)
         if len(post_data) == 1:
             # single object
