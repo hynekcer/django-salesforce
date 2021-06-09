@@ -144,6 +144,7 @@ class Contact(SalesforceModel):
                                   related_name='contact_owner_set', blank=True,
                                   **kw_owner
                                   )
+    xyz3 = models.CharField(max_length=40, null=True, blank=True, sf_managed=True, custom=True)
     if getattr(settings, 'SF_EXAMPLE_CUSTOM_INSTALLED', False):
         vs = models.DecimalField(custom=True, unique=True, max_digits=10, decimal_places=0, blank=True, null=True)
 

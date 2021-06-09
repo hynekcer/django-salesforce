@@ -139,8 +139,6 @@ class SfField(models.Field):
             kwargs['default'] = DefaultedOnCreate(internal_type=self.get_internal_type())
         if 'db_default' in kwargs and not DJANGO_50_PLUS:
             del kwargs['db_default']
-        if self.sf_managed:
-            kwargs.setdefault('managed', True)
         super().__init__(*args, **kwargs)
 
     def deconstruct(self) -> Tuple[Any, Any, Any, Any]:
@@ -160,6 +158,8 @@ class SfField(models.Field):
                     kwargs['db_column'] = column
                 elif 'db_column' in kwargs:
                     del kwargs['db_column']
+        if self.sf_managed:
+            kwargs['sf_managed'] = True
         return name, path, args, kwargs
 
     def get_attname_column(self) -> Tuple[str, str]:

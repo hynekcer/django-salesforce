@@ -43,6 +43,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'salesforce'
     display_name = 'Salesforce'
 
+    data_types = {
+        'BooleanField': 'Checkbox',
+        'CharField': 'Text',
+        'DateTimeField': 'DateTime',
+    }
+
     # All string operators are case insensitive in SOQL. (that can not be fixed)
     # The relevant part here is the operator, e.g. a simple "LIKE".
     # An optional wilcard ('%') is managed by a universal Django code for an operand.
