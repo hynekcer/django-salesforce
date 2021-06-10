@@ -5,13 +5,13 @@ without interaction to SF (without migrate)
 """
 from typing import List
 import re
-import requests
 import time
+
+import requests
 from django.db import NotSupportedError
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
-from salesforce.backend import log
-
+# souce: https://gist.github.com/wadewegner/9139536
 CREATE_OBJECT = """<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:apex="http://soap.sforce.com/2006/08/apex"
@@ -163,10 +163,28 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 'required': not field.null,
                 'unique': field.unique,
             }
-            if db_type == 'Text':
-                metadata['length'] = field.max_length
-            elif db_type == 'DateTime':
+            # if
+            #    metadata['defaultValue'] =
+
+            # by db_type
+            if db_type == 'CheckBox':
+                del metadata['required']
+            elif db_type in ('Date', 'DateTime'):
                 pass
+            elif db_type == 'Number':
+                metadata['precision'] = field.decimal_places
+                metadata['length'] = field.scale   # TODO
+            elif db_type in ('Text', 'Email', 'URL'):
+                metadata['length'] = field.max_length
+            elif db_type == 'Lookup':
+                del metadata['defaultValue']
+                # TODO "Related List Label" "Child Relationship Name"
+                metadata['relatedTo'] = field.related_model._meta.db_table
+                metadata['relationshipLabel'] = field.remote_field.get_accessor_name()
+                metadata['deleteConstraint'] = ('Restrict' if field.remote_field.on_delete is field.PROTECT
+                                                else 'SetNull')
+            elif db_type == 'PickList':
+                pass  # TODO copy from sf_syncdb
             else:
                 import pdb; pdb.set_trace()
                 raise NotImplementedError
