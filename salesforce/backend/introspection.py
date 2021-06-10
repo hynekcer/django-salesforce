@@ -22,6 +22,7 @@ from django.utils.text import camel_case_to_spaces
 from django.db.backends.utils import CursorWrapper as _Cursor  # for typing
 
 from salesforce.backend import DJANGO_22_PLUS, DJANGO_32_PLUS, DJANGO_50_PLUS
+from salesforce.dbapi import SalesforceError
 import salesforce.fields
 
 log = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         self._table_description_cache = {}  # type: Dict[str, Dict[str, Any]]
         self._converted_lead_status = None  # type: Optional[str]
         self.is_tooling_api = False  # modified by other modules
+        self._entity_map = {}  # type: Dict[str, str]
 
     # -- custom methods
 
@@ -154,6 +156,18 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 if x['name'] not in PROBLEMATIC_OBJECTS and not x['name'].endswith('ChangeEvent')
             ]
             self._table_names = {x['name'] for x in self._table_list_cache['sobjects']}
+
+            cur = self.connection.connection.cursor()
+            # select QualifiedApiName, DeveloperName, Label, DeploymentStatus, RunningUserEntityAccessId
+            # from EntityDefinition
+            try:
+                cur.execute("select QualifiedApiName, RunningUserEntityAccessId from EntityDefinition",
+                            tooling_api=True)
+                # example:  [['django_Test__c', '01IM00000005LRt.005M0000007whduIAA']]
+            except SalesforceError:
+                pass
+            else:
+                self._entity_map = {k: v.split('.')[0] for k, v in cur.fetchall()}
         return self._table_list_cache
 
     def table_description_cache(self, table: str) -> Dict[str, Any]:
@@ -200,6 +214,33 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def get_field_names(self, table_name: str) -> List[str]:
         return [x['name'] for x in self.table_description_cache(table_name)['fields']]
 
+    def get_default_from_metadata(self, table_name: str, field_name: str) -> Any:
+        """Get a simple constant default value of a custom field from metadata.
+
+        If the formula contains an operator or a function then None is returned.
+        """
+        if not field_name.endswith('__c') or table_name not in self._entity_map:
+            return None
+        cur = self.connection.connection.cursor()
+        parts = field_name.split('__')
+        if len(parts) == 3:
+            namespace_prefix, developer_name = parts[:2]  # type: Tuple[Optional[str], str]
+        else:
+            namespace_prefix, developer_name = None, parts[0]
+        soql = ("select Metadata from CustomField "
+                "where TableEnumOrId = %s and NamespacePrefix = %s and DeveloperName = %s")
+        cur.execute(soql, [self._entity_map[table_name], namespace_prefix, developer_name], tooling_api=True)
+        metadata = cur.fetchone()[0]
+        # this can be
+        json_default = metadata['defaultValue']
+        try:
+            ret = json.loads(json_default)
+        except json.decoder.JSONDecodeError:
+            return None
+        if not isinstance(ret, (bool, int, float, str)):
+            return None
+        return ret
+
     def get_field_params(self, field: Dict[str, Any]) -> Dict[str, Any]:  # pylint:disable=too-many-branches
         params = OrderedDict()
         if field['label'] and field['label'] != camel_case_to_spaces(re.sub('__c$', '', field['name'])).title():
@@ -228,8 +269,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         if default is not None:
             params['default'] = default
         elif field['defaultedOnCreate'] and field['createable'] and DJANGO_50_PLUS:
-            params['db_default'] = SymbolicModelsName('DEFAULTED_ON_CREATE')
-            params['blank'] = True
+            default = self.get_default_from_metadata(field['_table'], field['name'])
+            if default is not None:
+                params['default'] = default
+            else:
+                params['db_default'] = SymbolicModelsName('DEFAULTED_ON_CREATE')
+                params['blank'] = True
         elif field['calculatedFormula']:
             params['sf_formula'] = field['calculatedFormula']
 
@@ -264,6 +309,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # pylint:disable=too-many-locals,unused-argument
         result = []
         for field in self.table_description_cache(table_name)['fields']:
+            field['_table'] = table_name
             params = self.get_field_params(field)
             if field['type'] == 'reference' and not self.references_to(field):
                 field['type'] = 'string'
@@ -316,6 +362,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         important_related_names = []
         fields_map = {}  # type: Dict[str, Dict[str, Any]]
         for _, field in enumerate(self.table_description_cache(table_name)['fields']):
+            field['_table'] = table_name
             references_to = self.references_to(field)
             if references_to:
                 params = OrderedDict()
