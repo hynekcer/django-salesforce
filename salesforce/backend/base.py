@@ -46,7 +46,15 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     data_types = {
         'BooleanField': 'Checkbox',
         'CharField': 'Text',
+        'DateField': 'Date',
         'DateTimeField': 'DateTime',
+        'DecimalField': 'Number',
+        'EmailField': 'Email',
+        'FloatField': 'Number',
+        'ForeignKey': 'Lookup',
+        'IntegerField': 'Number',
+        'TextField': 'TextArea',
+        'URLField': 'URL',
     }
 
     # All string operators are case insensitive in SOQL. (that can not be fixed)
