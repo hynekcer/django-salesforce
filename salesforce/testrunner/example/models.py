@@ -253,7 +253,8 @@ class ChargentOrder(SalesforceModel):
         managed = False  # can not be managed if it eventually could not exist
 
     Name = models.CharField(max_length=255, db_column='Name')
-    Balance_Due = models.CharField(max_length=255, db_column='ChargentOrders__Balance_Due__c')
+    # example of automatically recognized name  db_column='ChargentOrders__Balance_Due__c'
+    Balance_Due = models.CharField(max_length=255, sf_namespace='ChargentOrders')
 
 
 class CronTrigger(SalesforceModel):
