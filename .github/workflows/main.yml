@@ -31,7 +31,7 @@ jobs:
         pip install --upgrade pip
         pip install tox
         # this should be used only for a capitalized primary key 'Id' with migrations
-        # sed -i -e "s/'id', salesforce/'Id', salesforce/" salesforce/testrunner/example/migrations/0*.py
+        sed -i -e "s/'id', salesforce/'Id', salesforce/" salesforce/testrunner/example/migrations/0*.py
     - name: Run Tests
       env:
         DJSF_LICENSE_KEY: ${{ secrets.DJSF_LICENSE_KEY }}
