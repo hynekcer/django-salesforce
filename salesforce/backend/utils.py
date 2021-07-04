@@ -243,7 +243,7 @@ class CursorWrapper:
     def execute_select(self, soql: str, args: Iterable[Any]) -> None:
         query_all = False
         tooling_api = False
-        if soql.endswith('FROM django_migrations'):
+        if re.search(r'FROM django_migrations\b', soql):
             # "SELECT django_migrations.id, django_migrations.app, django_migrations.name, django_migrations.applied "
             # "FROM django_migrations"
             soql = re.sub(r'(\.(?:app\b|name|applied))', '\\1__c', soql)
@@ -397,6 +397,8 @@ class CursorWrapper:
     def execute_delete(self, query: 'SalesforceDeleteQuery'):
         assert query.model
         table = query.model._meta.db_table
+        if table == 'django_migrations':
+            table = 'django_migrations__c'
         pks = self.get_pks_from_query(query)
 
         log.debug('DELETE %s(%s)', table, pks)
