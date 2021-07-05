@@ -142,7 +142,7 @@ class Contact(SalesforceModel):
         owner = models.ForeignKey(User, on_delete=models.DO_NOTHING,
                                   default=models.DefaultedOnCreate(User),
                                   related_name='contact_owner_set')
-    xyz3 = models.CharField(max_length=40, null=True, blank=True, sf_managed=True, custom=True)
+    # xyz3 = models.CharField(max_length=41, null=True, blank=True, sf_managed=True, custom=True, db_column='Xyz4__c')
     if getattr(settings, 'SF_EXAMPLE_CUSTOM_INSTALLED', False):
         vs = models.DecimalField(custom=True, unique=True, max_digits=10, decimal_places=0, blank=True, null=True)
 
@@ -378,7 +378,7 @@ class Test(SalesforceParentModel):
 
 
 class TestDetail(SalesforceModel):
-    parent = models.ForeignKey(Test, models.DO_NOTHING, db_column='Parent__c', sf_read_only=models.NOT_UPDATEABLE)
+    parent = models.ForeignKey(Test, models.DO_NOTHING, db_column='Parent__c', sf_read_only=models.NOT_UPDATEABLE, null=True)
     contact = models.ForeignKey('Contact', models.DO_NOTHING, db_column='Contact__c', blank=True, null=True)
 
     class Meta(SalesforceModel.Meta):
