@@ -165,6 +165,9 @@ def wrap_debug(func: Callable[..., None]) -> Callable[..., None]:
         skip = False
         interactive = self.sf_interactive
         interact_destructive_production = self.is_production and getattr(func, 'no_destructive_production', False)
+        if self.collect_sql:
+            raise NotImplementedError("Command 'sqlmigrate' not implemented. Use 'migrate --sf-interactive' instead "
+                                      "to can run by small parts.")
         if not interactive and not interact_destructive_production:
             return func(self, model, *args, **kwargs)
 
@@ -240,6 +243,49 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     )
     deferred_sql: List[str]
 
+    sql_create_table = None             # type: ignore[assignment] # not implemented by sql
+    sql_rename_table = None             # type: ignore[assignment] # not implemented by sql
+    sql_retablespace_table = None       # type: ignore[assignment] # not implemented by sql
+    sql_delete_table = None             # type: ignore[assignment] # not implemented by sql
+
+    sql_create_column = None            # type: ignore[assignment] # not implemented by sql
+    sql_alter_column = None             # type: ignore[assignment] # not implemented by sql
+    sql_alter_column_type = None        # type: ignore[assignment] # not implemented by sql
+    sql_alter_column_null = None        # type: ignore[assignment] # not implemented by sql
+    sql_alter_column_not_null = None    # type: ignore[assignment] # not implemented by sql
+    sql_alter_column_default = None     # type: ignore[assignment] # not implemented by sql
+    sql_alter_column_no_default = None  # type: ignore[assignment] # not implemented by sql
+    sql_alter_column_no_default_null = None                        # not implemented by sql
+    sql_alter_column_collate = None                                # not implemented by sql
+    sql_delete_column = None            # type: ignore[assignment] # not implemented by sql
+    sql_rename_column = None            # type: ignore[assignment] # not implemented by sql
+    sql_update_with_default = None      # type: ignore[assignment] # not implemented by sql
+
+    sql_unique_constraint = None                                   # not implemented by sql
+    sql_check_constraint = None                                    # not implemented by sql
+    sql_delete_constraint = None                                   # not implemented by sql
+    sql_constraint = None                                          # not implemented by sql
+
+    sql_create_check = None             # type: ignore[assignment] # not implemented by sql
+    sql_delete_check = None             # type: ignore[assignment] # not implemented by sql
+
+    sql_create_unique = None            # type: ignore[assignment] # not implemented by sql
+    sql_delete_unique = None            # type: ignore[assignment] # not implemented by sql
+
+    sql_create_fk = None                # type: ignore[assignment] # not implemented by sql
+    sql_create_inline_fk = None         # type: ignore[assignment] # not implemented by sql
+    sql_create_column_inline_fk = None                             # not implemented by sql
+    sql_delete_fk = None                # type: ignore[assignment] # not implemented by sql
+
+    sql_create_index = None             # type: ignore[assignment] # not implemented by sql
+    sql_create_unique_index = None      # type: ignore[assignment] # not implemented by sql
+    sql_delete_index = None             # type: ignore[assignment] # not implemented by sql
+
+    sql_create_pk = None                # type: ignore[assignment] # not implemented by sql
+    sql_delete_pk = None                # type: ignore[assignment] # not implemented by sql
+
+    sql_delete_procedure = None         # type: ignore[assignment] # not implemented by sql
+
     def __init__(self, connection, collect_sql=False, atomic=True):
         self.conn = connection.connection
         self.connection = connection.connection
@@ -247,8 +293,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         self.sf_interactive = connection.migrate_options.get('sf_interactive')
         self.sf_noinput = connection.migrate_options.get('sf_noinput')
         self.collect_sql = collect_sql
-        # if self.collect_sql:
-        #    self.collected_sql = []
+        if self.collect_sql:
+            self.collected_sql = []  # type: List[str]
         log.debug('DatabaseSchemaEditor __init__')
         self.cur = self.conn.cursor()
         self._permission_set_id = None  # Optional[str]
@@ -406,6 +452,29 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     def execute(self, sql: Union[Statement, str], params: Any = ()) -> None:
         assert isinstance(sql, str)
         raise NotSupportedError("Migration SchemaEditor: %r, %r" % (sql, params))
+
+    # -- not implemented methods
+
+    def add_index(self, model, index):
+        raise NotImplementedError
+
+    def remove_index(self, model, index):
+        raise NotImplementedError
+
+    def add_constraint(self, model, constraint):
+        raise NotImplementedError
+
+    def remove_constraint(self, model, constraint):
+        raise NotImplementedError
+
+    def alter_unique_together(self, model, old_unique_together, new_unique_together):
+        raise NotImplementedError
+
+    def alter_index_together(self, model, old_index_together, new_index_together):
+        raise NotImplementedError
+
+    def alter_db_tablespace(self, model, old_db_tablespace, new_db_tablespace):
+        raise NotImplementedError
 
     # -- private methods
 
