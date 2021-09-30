@@ -509,7 +509,7 @@ class Cursor(Generic[_TRow]):
     for complete rows, one by one.
     """
 
-    # pylint:disable=too-many-instance-attributes
+    # pylint:disable=too-many-instance-attributes,too-many-public-methods
     def __init__(self, connection: Connection, row_type: Optional[Type[_TRow]] = None) -> None:
         # DB API attributes (public, ordered by documentation PEP 249)
         self.description = None           # type: Optional[List[Tuple[Any, ...]]]
@@ -619,6 +619,12 @@ class Cursor(Generic[_TRow]):
 
     def __next__(self) -> _TRow:
         return self._iter.__next__()
+
+    def commit(self) -> None:
+        self._connection.commit()
+
+    def rollback(self) -> None:
+        self._connection.rollback()
 
     # -- private methods
 
