@@ -91,8 +91,8 @@ class SalesforceAutoField(fields.AutoField):
         # with old migrations created before v0.6. Other conditions are enough.
         if name != SF_PK or not self.primary_key:
             raise ImproperlyConfigured(
-                "SalesforceAutoField must be a primary key"
-                "with the name '%s' (configurable by settings)." % SF_PK)
+                "SalesforceAutoField must be a primary key "
+                "with the name '%s' in model %s (configurable by settings)." % (SF_PK, cls._meta.object_name))
         if cls._meta.auto_field:
             # A model has another auto_field yet and a new auto field is added.
             same_type = type(self) == type(cls._meta.auto_field)  # noqa pylint:disable=unidiomatic-typecheck
