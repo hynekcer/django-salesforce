@@ -229,7 +229,7 @@ def no_destructive_production(func: Callable[..., None]) -> Callable[..., None]:
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
-    # pylint:disable=abstract-method  # undefined: prepare_default, quote_value
+    # pylint:disable=abstract-method,too-many-instance-attributes  # undefined: prepare_default, quote_value
 
     DISPLAY_FORMAT = 'A-{0}'
 
@@ -299,7 +299,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         self.cur = self.conn.cursor()
         self._permission_set_id = None  # Optional[str]
         self._is_production = None  # Optional[bool];
-        self.permission_set_id  # require the permission set
+        assert self.permission_set_id  # require the permission set
         self.django_migration_exists = None  # Optional[bool]
         super().__init__(connection, collect_sql=collect_sql, atomic=atomic)
 
