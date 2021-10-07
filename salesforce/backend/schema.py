@@ -84,6 +84,7 @@ class ParseXml:
 
     def to_dict(self, node: Optional[ET.Element] = None) -> Dict[str, Any]:
         """Reverse operation to 'to_xml'"""
+        # pylint:disable=too-many-return-statements,too-many-branches
         if node is None:
             node = self.root
         out = {}  # type: Dict[str, Any]
@@ -133,6 +134,7 @@ def to_xml(data: T_PY2XML, indent: int = 0) -> str:
 
     Examples are in: salesforce.tests.test_unit.ToXml
     """
+    # pylint:disable=no-else-return
     INDENT = 2  # indent step
     if data is None:
         return ''
@@ -162,6 +164,7 @@ def to_xml(data: T_PY2XML, indent: int = 0) -> str:
 
 def wrap_debug(func: Callable[..., None]) -> Callable[..., None]:
     def wrapped(self, model: Type[Model], *args: Any, **kwargs: Any) -> None:
+        # pylint:disable=too-many-return-statements,too-many-branches
         skip = False
         interactive = self.sf_interactive
         interact_destructive_production = self.is_production and getattr(func, 'no_destructive_production', False)
@@ -210,10 +213,12 @@ def wrap_debug(func: Callable[..., None]) -> Callable[..., None]:
                     answer = 'C'
                 else:
                     answer = input('Stop after this error? [s(stop) / c(continue) / d(debug)]:').upper()
+                # pylint:disable=no-else-return
                 if answer == 'C':  # continue
                     return None
                 elif answer == 'D':  # debug
-                    import pdb; pdb.set_trace()  # noqa
+                    import pdb  # pylint:disable=import-outside-toplevel
+                    pdb.set_trace()
                     return None
                 elif answer:
                     raise
@@ -229,7 +234,8 @@ def no_destructive_production(func: Callable[..., None]) -> Callable[..., None]:
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
-    # pylint:disable=abstract-method,too-many-instance-attributes  # undefined: prepare_default, quote_value
+    # undefined abstract methods: prepare_default, quote_value
+    # pylint:disable=abstract-method,too-many-instance-attributes,too-many-public-methods
 
     DISPLAY_FORMAT = 'A-{0}'
 
@@ -360,7 +366,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 if isinstance(field, ForeignKey) and getattr(field, 'sf_managed', False):
                     # prevent a duplicit related_name for more deleted copies
                     related_name_orig = field.remote_field.get_accessor_name()  # type: ignore[attr-defined]
-                    for retry in range(10):
+                    for retry in range(10):  # pylint:disable=unused-variable
                         del_suffix = '_del_{:04}'.format(random.randint(0, 9999))
                         field.remote_field.related_name = related_name_orig + del_suffix  # type: ignore[attr-defined]
                         try:
@@ -618,7 +624,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             return ParseXml(ret.text).to_dict()  # type: ignore[return-value]
         return ret.text
 
-    def parse_simple_response(self, text: str, action: str) -> Dict[str, Any]:
+    @staticmethod
+    def parse_simple_response(text: str, action: str) -> Dict[str, Any]:
         obj = ParseXml(text, type_hints={'success': bool})
         tree = obj.to_dict()
         try:
