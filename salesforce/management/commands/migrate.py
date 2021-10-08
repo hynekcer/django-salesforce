@@ -20,16 +20,28 @@ class Command(MigrateCommand):
             '--sf-create-permission-set', action='store_true',
             help='only Create PermissionSet "Django_Salesforce" on a new SF database to enable migrations.',
         )
+        parser.add_argument(
+            '--sf-debug-info', action='store_true',
+            help='Print a short context info before raising some exceptions.',
+        )
+        # parser.add_argument(
+        #     '--batch', action='store_true',
+        #     help='Run more subcommands by one request.',
+        # )
 
     def handle(self, *args, **options):
         database = options['database']
         connection = connections[database]
         if connection.vendor == 'salesforce':
             connection.migrate_options = {
+                # 'batch': options['batch'],
+                'sf_debug_info': options['sf_debug_info'],
                 'sf_interactive': options['sf_interactive'],
                 'sf_no_check_permissions': options['sf_no_check_permissions'],
+                'sf_noinput': not options['interactive'],
             }
             enterprise.check_enterprise_license()
+
         if options['sf_create_permission_set']:
             if connection.vendor == 'salesforce':
                 from salesforce.backend.schema import DatabaseSchemaEditor  # pylint:disable=import-outside-toplevel
