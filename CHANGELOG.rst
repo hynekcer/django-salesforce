@@ -13,6 +13,22 @@ but a new feature can be referred by a test name if not documented yet.
 Some items here can be marked as "internal": not ready enough or
 experimental.
 
+
+[5.1.1] Unpublished
+-------------------
+* Add: Written documentation docs/migrations.rst about the system how to
+  restrict objects that should be managed in SFDC, which instance can be
+  managed and which custom models can be never destructed e.g. in production
+  instance even that they cen be destructed and created again in a development
+  instance.
+* Add: Command "migrate" can create, update, rename and delete models and fields
+  in Salesforce databases.
+* Add: Introspection use metadata for better detection of default values
+  in inspectdb.
+* Fix: Makemigrations with custom models
+* Add: Recognize standard fields in custom models
+
+
 [5.1] 2024-08-31 ?
 ------------------
 * The cursor rollback() method only reports a message that rollback does nothing only
