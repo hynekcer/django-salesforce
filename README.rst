@@ -211,25 +211,15 @@ Advanced usage
      deleted_list = list(Lead.objects.filter(IsDeleted=True).query_all())
 
 -  **Migrations** - Migrations can be used for an alternate test database
-   with SalesforceModel. Then all tables must have Meta options ``db_table``
-   and fields must have option ``db_column``, which is done by ``inspectdb``
+   with SalesforceModel and also for SFDC.
+
+   For alternate databases: all tables must have Meta options ``db_table``
+   and fields must have option ``db_column``. That is written e.g. by ``inspectdb``
    with default settings. Models exported by introspection ``inspectdb``
    do not specify the option ``managed`` because the default value is True.
 
    Models managed by migrations on SFDC require the option ``sf_managed=True``.
    Detaild are described in `docs Migrations <docs/migrations.rst>`__.
-
-   (It is safe. When migrations in SFDC will be supported by the next version
-   4.0.1 then only for explicitly selected fields and models and on
-   explicitly labeled SFDC databases.
-   Consequently, the setting ``managed = True`` alone is related only to
-   an alternate non SFDC database configured by ``SALESFORCE_DB_ALIAS``.)
-
-   There is probably no reason now to collect old migrations of an application
-   that uses only SalesforceModel if they are related to data stored only in Salesforce.
-   Such old migrations can be easily deleted and a new initial migration can be
-   created again if it would be necessary for offline tests if that migrations
-   directory seems big and obsoleted.
 
 -  **Exceptions** - Custom exceptions instead of standard Django database
    exceptions are raised by Django-Salesforce to get more useful information.
@@ -281,6 +271,8 @@ Backwards-incompatible changes
 ------------------------------
 
 The most important:
+
+-  v4.0.1: Migrations are possible on SFDC, but be cautious and read docs.
 
 -  v4.0: Removed support for Python 3.5
 
