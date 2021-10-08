@@ -14,6 +14,21 @@ Some items here can be marked as "internal": not ready enough or
 experimental.
 
 
+[5.0.3] Unpublished
+-------------------
+* Add: Written documentation docs/migrations.rst about the system how to
+  restrict objects that should be managed in SFDC, which instance can be
+  managed and which custom models can be never destructed e.g. in production
+  instance even that they cen be destructed and created again in a development
+  instance.
+* Add: Command "migrate" can create, update, rename and delete models and fields
+  in Salesforce databases.
+* Add: Introspection use metadata for better detection of default values
+  in inspectdb.
+* Fix: Makemigrations with custom models
+* Add: Recognize standard fields in custom models
+
+
 [5.0.2] 2024-05-27
 ------------------
 The main new features are in the improved query compiler
