@@ -15,7 +15,7 @@ import requests
 from django.db import NotSupportedError
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.ddl_references import Statement
-from django.db.models import Field, ForeignKey, Model, NOT_PROVIDED, PROTECT
+from django.db.models import Field, ForeignKey, IntegerField, Model, NOT_PROVIDED, PROTECT
 from salesforce.dbapi.exceptions import IntegrityError, OperationalError, SalesforceError, SalesforceWarning
 from salesforce import defaults
 
@@ -404,6 +404,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     @wrap_debug
     def add_field(self, model: Type[Model], field: Field) -> None:
+        assert field.model == model
         db_table = model._meta.db_table
         sf_managed = getattr(field, 'sf_managed', False) or db_table == 'django_migrations__c'
         if sf_managed:
@@ -670,8 +671,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         elif db_type in ('Date', 'DateTime'):
             metadata.pop('defaultValue', None)
         elif db_type == 'Number':
-            metadata['precision'] = field.max_digits  # type: ignore[attr-defined]
-            metadata['scale'] = field.decimal_places  # type: ignore[attr-defined]
+            if isinstance(field, IntegerField):
+                metadata['precision'] = 0
+                metadata['scale'] = 18
+            else:
+                metadata['precision'] = field.max_digits  # type: ignore[attr-defined]
+                metadata['scale'] = field.decimal_places  # type: ignore[attr-defined]
         elif db_type in ('Text', 'Email', 'URL'):
             metadata['length'] = field.max_length
         elif db_type == 'Lookup':
