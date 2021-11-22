@@ -15,7 +15,7 @@ import requests
 from django.db import NotSupportedError
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.ddl_references import Statement
-from django.db.models import Field, ForeignKey, Model, NOT_PROVIDED, PROTECT
+from django.db.models import Field, ForeignKey, IntegerField, Model, NOT_PROVIDED, PROTECT
 from salesforce.dbapi.exceptions import IntegrityError, OperationalError, SalesforceError, SalesforceWarning
 from salesforce import defaults
 
@@ -689,8 +689,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         elif db_type in ('Date', 'DateTime'):
             metadata.pop('defaultValue', None)
         elif db_type == 'Number':
-            metadata['precision'] = field.max_digits  # type: ignore[attr-defined]
-            metadata['scale'] = field.decimal_places  # type: ignore[attr-defined]
+            if isinstance(field, IntegerField):
+                metadata['precision'] = 18
+                metadata['scale'] = 0
+            else:
+                metadata['precision'] = field.max_digits  # type: ignore[attr-defined]
+                metadata['scale'] = field.decimal_places  # type: ignore[attr-defined]
         elif db_type in ('Text', 'Email', 'URL'):
             metadata['length'] = field.max_length
         elif db_type == 'Lookup':
