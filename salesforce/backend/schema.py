@@ -672,8 +672,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             metadata.pop('defaultValue', None)
         elif db_type == 'Number':
             if isinstance(field, IntegerField):
-                metadata['precision'] = 0
-                metadata['scale'] = 18
+                metadata['precision'] = 18
+                metadata['scale'] = 0
             else:
                 metadata['precision'] = field.max_digits  # type: ignore[attr-defined]
                 metadata['scale'] = field.decimal_places  # type: ignore[attr-defined]
