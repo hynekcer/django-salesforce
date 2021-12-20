@@ -654,7 +654,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             'label': field.verbose_name,
             'type': db_type,
             'inlineHelpText': field.help_text,
-            'required': not field.null,
+            'required': not field.null and not field.blank,
             'unique': field.unique,  # type: ignore[attr-defined]
         }
         if isinstance(field.default, defaults.BaseDefault):
