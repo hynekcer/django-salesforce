@@ -404,7 +404,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     @wrap_debug
     def add_field(self, model: Type[Model], field: Field) -> None:
-        assert field.model == model
+        assert field.model._meta.db_table == model._meta.db_table
         db_table = model._meta.db_table
         sf_managed = getattr(field, 'sf_managed', False) or db_table == 'django_migrations__c'
         if sf_managed:
