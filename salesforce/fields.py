@@ -23,7 +23,7 @@ from salesforce.backend import DJANGO_50_PLUS
 from salesforce.defaults import DEFAULTED_ON_CREATE, DefaultedOnCreate, BaseDefault
 
 
-# None of field types defined here don't need a "deconstruct" method.
+# None of field types defined here don't need a "deconstruct" method, except AutoField.
 # Their parameters only describe the different, but stable nature of SF standard objects.
 
 FULL_WRITABLE = 0
