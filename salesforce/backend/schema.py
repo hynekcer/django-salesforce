@@ -698,6 +698,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 metadata['scale'] = field.decimal_places  # type: ignore[attr-defined]
         elif db_type in ('Text', 'Email', 'URL'):
             metadata['length'] = field.max_length
+        elif db_type == 'LongTextArea':
+            del metadata['required']
+            metadata['length'] = 32 * 1024  # default length
+            metadata['visibleLines'] = 25
+            if 'HTML' in field.help_text:
+                db_type = 'Html'
+                metadata['type'] = db_type
         elif db_type == 'Lookup':
             metadata.pop('defaultValue', None)  # TODO maybe write a warning if a defaultValue exists
             metadata['referenceTo'] = field.related_model._meta.db_table  # type: ignore[union-attr]
