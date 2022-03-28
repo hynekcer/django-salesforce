@@ -415,7 +415,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
             log.debug("add_field %s %s", model, full_name)
 
-            self.set_field_permissions(field, {'PermissionsRead': True, 'PermissionsEdit': True})
+            if metadata['type'] != 'MasterDetail':
+                self.set_field_permissions(field, {'PermissionsRead': True, 'PermissionsEdit': True})
 
     @wrap_debug
     @no_destructive_production
@@ -705,14 +706,18 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if 'HTML' in field.help_text:
                 db_type = 'Html'
                 metadata['type'] = db_type
-        elif db_type == 'Lookup':
+        elif db_type in ('Lookup', 'MasterDetail'):
             metadata.pop('defaultValue', None)  # TODO maybe write a warning if a defaultValue exists
             metadata['referenceTo'] = field.related_model._meta.db_table  # type: ignore[union-attr]
             metadata['relationshipName'] = field.remote_field.get_accessor_name()  # type: ignore[attr-defined]
             # metadata['relationshipLabel'] = metadata['relationshipName']  # not important
-            metadata['deleteConstraint'] = (
-                'Restrict' if field.remote_field.on_delete is PROTECT  # type: ignore[attr-defined]
-                else 'SetNull')
+            if db_type == 'Lookup':
+                metadata['deleteConstraint'] = (
+                    'Restrict' if field.remote_field.on_delete is PROTECT  # type: ignore[attr-defined]
+                    else 'SetNull')
+            elif db_type == 'MasterDetail':
+                metadata['relationshipOrder'] = field.sf_master_detail_order  # type: ignore[attr-defined]
+                del metadata['required']
         elif db_type == 'Picklist':
             # deactivated Picklist values are not visible by a normal metadata query
             # we don't need to work with them
