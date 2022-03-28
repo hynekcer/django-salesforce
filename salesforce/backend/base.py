@@ -53,7 +53,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'FloatField': 'Number',
         # 'ForeignKey': 'Lookup',
         'IntegerField': 'Number',
-        'TextField': 'TextArea',
+        'TextField': 'LongTextArea',
         'URLField': 'URL',
     }
 
