@@ -690,6 +690,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         elif db_type == 'Picklist':
             # deactivated Picklist values are not visible by a normal metadata query
             # we don't need to work with them
+            metadata.pop('defaultValue', None)
             metadata['valueSet'] = {
                 'restricted': False,
                 'valueSetDefinition': {
