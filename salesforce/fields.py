@@ -23,7 +23,7 @@ from django.db import models
 from salesforce.defaults import DEFAULTED_ON_CREATE, DefaultedOnCreate, BaseDefault
 
 
-# None of field types defined here don't need a "deconstruct" method, except AutoField.
+# None of field types defined here don't need a "deconstruct" method, except AutoField and MasterDetail.
 # Their parameters only describe the different, but stable nature of SF standard objects.
 
 FULL_WRITABLE = 0
@@ -353,6 +353,8 @@ class SfForeignObjectMixin(SfField, _MixinTypingBase):
                 "Only foreign keys with on_delete = PROTECT or "
                 "DO_NOTHING are currently supported, not %s related to %s"
                 % (on_delete, to))
+        if 'sf_master_detail_order' in kwargs:
+            self.sf_master_detail_order = kwargs.pop('sf_master_detail_order')
         super().__init__(to, on_delete, *args, **kwargs)
 
     def get_attname(self) -> str:
@@ -368,13 +370,19 @@ class SfForeignObjectMixin(SfField, _MixinTypingBase):
             column += 'Id'
         return attname, column
 
+    def deconstruct(self) -> Tuple[Any, Any, Any, Any]:
+        name, path, args, kwargs = super().deconstruct()
+        if hasattr(self, 'sf_master_detail_order'):
+            kwargs['sf_master_detail_order'] = self.sf_master_detail_order
+        return name, path, args, kwargs
+
 
 class ForeignKey(SfForeignObjectMixin, models.ForeignKey):
     """ForeignKey with sf_read_only attribute that is acceptable by Salesforce."""
 
     def db_type(self, connection: Any) -> str:
         if connection.vendor == 'salesforce':
-            return 'Lookup'
+            return 'Lookup' if not hasattr(self, 'sf_master_detail_order') else 'MasterDetail'
         return super().db_type(connection)
 
 
