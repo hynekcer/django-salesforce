@@ -454,7 +454,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             metadata2 = self.make_field_metadata(new_field)
             self.metadata_command({"updateMetadata": {'metadata xsi:type="CustomField"': metadata2}})
             if not metadata2.get('required') and self.make_field_metadata(old_field).get('required'):
-                self.set_field_permissions(new_field, {'PermissionsRead': True, 'PermissionsEdit': True})
+                # check if the permissions were hidden while the field was required (and still accessible)
+                # or if the required field was created without explicit permissions
+                # explicit permissions
+                self.cur.execute("SELECT Id FROM FieldPermissions WHERE Field=%s AND ParentId = %s",
+                                 [metadata2['fullName'], self.permission_set_id])
+                if self.cur.fetchone() is None:
+                    self.set_field_permissions(new_field, {'PermissionsRead': True, 'PermissionsEdit': True})
 
     def execute(self, sql: Union[Statement, str], params: Any = ()) -> None:
         assert isinstance(sql, str)
