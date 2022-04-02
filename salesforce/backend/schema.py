@@ -743,6 +743,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             }
         else:
             raise NotImplementedError
+        if field.model._meta.db_table != 'django_migrations__c':
+            sf_meta_params = field.sf_meta_params  # type: ignore[attr-defined]
+            assert not set(metadata.keys()).intersection(sf_meta_params)
+            metadata.update(sf_meta_params)
         return metadata
 
     def make_model_metadata(self, model: Type[Model]) -> Dict[str, Any]:
