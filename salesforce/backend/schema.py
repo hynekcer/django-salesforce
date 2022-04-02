@@ -781,5 +781,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         ])
         self.metadata_command({"deleteMetadata": metadata})
 
+    def read_metadata(self, metadata_type: str, full_names: List[str]) -> Dict[str, Any]:
+        metadata = OrderedDict([
+            ("type", metadata_type),
+            ("fullNames", list(full_names)),
+        ])
+        return self.metadata_command({"readMetadata": metadata})
+
     # def prepare_default(self, value):    # TODO
     #     return self.quote_value(value)
