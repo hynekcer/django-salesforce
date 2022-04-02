@@ -8,7 +8,7 @@
 Customized fields for Salesforce, especially the primary key. (like django.db.models.fields)
 """
 
-from typing import Any, Callable, Optional, Tuple, Type, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TYPE_CHECKING, Union
 import warnings
 from decimal import Decimal
 from django.conf import settings
@@ -144,10 +144,15 @@ class SfField(models.Field):
         self.sf_namespace = kwargs.pop('sf_namespace', '')  # type: str
         self.sf_formula = kwargs.pop('sf_formula', None)    # type: Optional[str]
         self.sf_managed = kwargs.pop('sf_managed', None)    # type: Optional[bool]
+        self.sf_meta_params: Dict[str, Any] = kwargs.pop('sf_meta_params', {})
 
         assert (self.sf_custom is None or kwargs.get('db_column') is None or
                 self.sf_custom == kwargs['db_column'].endswith('__c'))
         assert not self.sf_namespace or self.sf_custom is not False
+        unexpected = [k for k in self.sf_meta_params if k in ('sf_read_only', 'custom', 'sf_namespace', 'sf_managed')]
+        if unexpected:
+            raise ValueError(f"The parameters {unexpected} should be used directly in the field, "
+                             "not in `sf_meta_params` dictionary")
         if kwargs.get('default') is DEFAULTED_ON_CREATE:
             kwargs['default'] = DefaultedOnCreate(internal_type=self.get_internal_type())
         if 'db_default' in kwargs and not DJANGO_50_PLUS:
@@ -173,6 +178,8 @@ class SfField(models.Field):
                     del kwargs['db_column']
         if self.sf_managed is not None:
             kwargs['sf_managed'] = self.sf_managed
+        if self.sf_meta_params:
+            kwargs['sf_meta_params'] = self.sf_meta_params
         return name, path, args, kwargs
 
     def get_attname_column(self) -> Tuple[str, str]:
