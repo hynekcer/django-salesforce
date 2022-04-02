@@ -655,6 +655,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return False
 
     def make_field_metadata(self, field: Field) -> Dict[str, Any]:
+        # pylint:disable=too-many-branches
         # TODO test all db_type with a default value and without and transitions between them for some type
         db_type = field.db_type(self.connection)
         metadata = {
@@ -688,11 +689,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         elif db_type in ('Text', 'Email', 'URL'):
             metadata['length'] = field.max_length
         elif db_type == 'LongTextArea':
+            del metadata['required']
             metadata['length'] = 32 * 1024  # default length
+            metadata['visibleLines'] = 25
             if 'HTML' in field.help_text:
                 db_type = 'Html'
                 metadata['type'] = db_type
-                metadata['visibleLines'] = 25
         elif db_type in ('Lookup', 'MasterDetail'):
             metadata.pop('defaultValue', None)  # TODO maybe write a warning if a defaultValue exists
             metadata['referenceTo'] = field.related_model._meta.db_table  # type: ignore[union-attr]
