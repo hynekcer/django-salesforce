@@ -457,8 +457,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 # or if the required field was created without explicit permissions
                 # explicit permissions
                 self.cur.execute("SELECT Id FROM FieldPermissions WHERE Field=%s AND ParentId = %s",
-                                 [metadata2['Field'], metadata2['ParentId']])
-                if self.cur.fetchone() is not None:
+                                 [metadata2['fullName'], self.permission_set_id])
+                if self.cur.fetchone() is None:
                     self.set_field_permissions(new_field, {'PermissionsRead': True, 'PermissionsEdit': True})
 
     def execute(self, sql: Union[Statement, str], params: Any = ()) -> None:
