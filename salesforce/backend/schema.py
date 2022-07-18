@@ -601,7 +601,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 print()
             raise
 
-    def metadata_command(self,  metadata: Dict[str, Any], to_dict: bool = False) -> str:
+    def metadata_command(self,  metadata: Dict[str, Any], to_dict: bool = False) -> Dict[str, Any]:
         # TODO move to the driver
         data = METADATA_ENVELOPE.format(
             session_id=self.conn.sf_session.auth.get_auth()['access_token'],
@@ -631,7 +631,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             ))
         if to_dict:
             return ParseXml(ret.text).to_dict()  # type: ignore[return-value]
-        return ret.text
+        return ret.json()
 
     @staticmethod
     def parse_simple_response(text: str, action: str) -> Dict[str, Any]:
