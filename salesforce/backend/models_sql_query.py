@@ -144,7 +144,7 @@ class SalesforceQuery(Query, Generic[_T]):
 
 
 class SalesforceInsertQuery(SalesforceQuery, subqueries.InsertQuery, Generic[_T]):
-    model: 'SalesforceModel'  # type: ignore[assignment]  # TODO: fix the django-stub: model is not None
+    model: 'SalesforceModel'  # type: ignore[assignment]  # TODO: fix the django-stubs: model is not None
 
 
 class SalesforceUpdateQuery(SalesforceQuery, subqueries.UpdateQuery, Generic[_T]):
