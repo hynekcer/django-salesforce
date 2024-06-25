@@ -1,5 +1,6 @@
 from django.core.management.commands.migrate import Command as MigrateCommand  # type: ignore[import]
 from django.db import connections
+from salesforce.backend import enterprise
 
 
 class Command(MigrateCommand):
@@ -38,6 +39,7 @@ class Command(MigrateCommand):
                 'sf_no_check_permissions': options['sf_no_check_permissions'],
                 'sf_noinput': not options['interactive'],
             }
+            enterprise.check_enterprise_license()
 
         if options['sf_create_permission_set'] and connection.vendor == 'salesforce':
             from salesforce.backend.schema import DatabaseSchemaEditor  # pylint:disable=import-outside-toplevel
