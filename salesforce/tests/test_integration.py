@@ -270,7 +270,7 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
                     duplicate.save()
             except salesforce.backend.base.SalesforceError as exc:
                 # TODO uncovered line, maybe bug
-                self.assertEqual(exc.data[0]['errorCode'], 'DUPLICATE_VALUE')  # type: ignore
+                self.assertEqual(exc.data[0]['errorCode'], 'DUPLICATE_VALUE')  # type: ignore[index]
             else:
                 self.assertRaises(salesforce.backend.base.SalesforceError, duplicate.save)
 
@@ -403,7 +403,8 @@ class BasicSOQLRoTest(TestCase, LazyTestMixin):
         test_lead = Lead(FirstName="User", LastName="Unittest Inserts",
                          Email='test-djsf-inserts-email@example.com',
                          Company="Some company")
-        test_lead.save()
+        with self.lazy_assert_n_requests(1):
+            test_lead.save()
         try:
             self.assertEqual(len(test_lead.pk), 18)
         finally:
