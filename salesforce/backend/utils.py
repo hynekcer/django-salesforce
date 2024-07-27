@@ -11,7 +11,9 @@ import decimal
 import logging
 import warnings
 from itertools import islice
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Tuple, TypeVar, Union, overload
+from typing import (
+    Any, Callable, Dict, Iterable, Iterator, List, Optional, overload,
+    Sequence, Union, Tuple, TYPE_CHECKING, TypeVar)
 
 from django.db import models
 from django.db.models import expressions as db_expressions
@@ -20,7 +22,7 @@ from django.db.models.sql import subqueries, Query, RawQuery
 from salesforce.backend import DJANGO_30_PLUS, DJANGO_42_PLUS, DJANGO_50_PLUS
 from salesforce.dbapi.driver import (
     DatabaseError, SalesforceWarning, merge_dict,
-    register_conversion, arg_to_json)
+    register_conversion, arg_to_json, Cursor as DbapiCursor)
 from salesforce.fields import NOT_UPDATEABLE, NOT_CREATEABLE
 
 if DJANGO_42_PLUS:
@@ -29,12 +31,19 @@ else:
     class FullResultSet(Exception):  # type: ignore[no-redef]
         pass
 
+if TYPE_CHECKING:
+    # pylint:disable=cyclic-import
+    from salesforce.backend.base import DatabaseWrapper
+    from salesforce.backend.models_sql_query import (
+        SalesforceQuery, SalesforceInsertQuery, SalesforceUpdateQuery, SalesforceDeleteQuery)
+    from salesforce.models import SalesforceModel
+
 
 V = TypeVar('V')
 if not DJANGO_30_PLUS:
     # a "do nothing" stub for Django < 3.0, where is no decorator @async_unsafe
-    F = TypeVar('F', bound=Callable)
-    F2 = TypeVar('F2', bound=Callable)
+    F = TypeVar('F', bound=Callable[..., Any])
+    F2 = TypeVar('F2', bound=Callable[..., Any])
 
     @overload
     def async_unsafe(message: F) -> F:
@@ -68,7 +77,7 @@ DJANGO_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f-00:00'
 MIGRATIONS_QUERY_TO_BE_IGNORED = "SELECT django_migrations.app, django_migrations.name FROM django_migrations"
 
 
-def extract_insert_values(query) -> List[Dict[str, Any]]:  # TODO can be more strict
+def extract_insert_values(query: 'SalesforceInsertQuery') -> List[Dict[str, Any]]:  # TODO can be more strict
     """
     Extract values from insert.
     Supports bulk_create
@@ -136,29 +145,29 @@ class CursorWrapper:
     """
 
     # pylint:disable=too-many-instance-attributes,too-many-public-methods
-    def __init__(self, cursor, db) -> None:
+    def __init__(self, cursor, db: 'DatabaseWrapper') -> None:
         """
         Connect to the Salesforce API.
         """
         self.cursor = cursor
         self.db = db
-        self.query = None
+        self.query = None      # type: Optional[SalesforceQuery]
         self.session = db.sf_session  # this creates a TCP connection if doesn't exist
-        self.rowcount = None
-        self.first_row = None
-        self.lastrowid = None  # not moved to driver because INSERT is implemented here
+        self.rowcount = None   # type: Optional[int]
+        self.first_row = None  # type: Optional[Dict[str, Any]]
+        self.lastrowid = None  # type: Optional[List[str]] # not moved to driver because INSERT is implemented here
 
-    def __enter__(self):
+    def __enter__(self) -> 'CursorWrapper':
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
     @property
-    def oauth(self):
+    def oauth(self) -> Dict[str, str]:
         return self.session.auth.get_auth()
 
-    def execute(self, q, args=()):
+    def execute(self, q: str, args: Tuple[Any, ...] = ()) -> None:
         """
         Send a query to the Salesforce API.
         """
@@ -205,37 +214,38 @@ class CursorWrapper:
             if not q.upper().startswith('SELECT COUNT() FROM'):
                 self.first_row = data['records'][0] if data['records'] else None
 
-    def prepare_query(self, query):
+    def prepare_query(self, query: 'SalesforceQuery') -> None:
         self.query = query
 
     def execute_django(self, soql: str, args: Tuple[Any, ...] = ()):
         """
         Fixed execute for queries coming from Django query compilers
         """
-        response = None
+        # pylint:disable=no-else-return
         sqltype = soql.split(None, 1)[0].upper()
         if isinstance(self.query, subqueries.InsertQuery):
-            response = self.execute_insert(self.query)
+            return self.execute_insert(self.query)
         elif isinstance(self.query, subqueries.UpdateQuery):
-            response = self.execute_update(self.query)
+            return self.execute_update(self.query)
         elif isinstance(self.query, subqueries.DeleteQuery):
-            response = self.execute_delete(self.query)
+            return self.execute_delete(self.query)
         elif isinstance(self.query, RawQuery):
             self.execute_select(soql, args)
+            return None
         elif sqltype in ('SAVEPOINT', 'ROLLBACK', 'RELEASE'):
             log.info("Ignored SQL command '%s'", sqltype)
-            return
+            return None
         elif isinstance(self.query, Query):
             self.execute_select(soql, args)
+            return None
         else:
             raise DatabaseError("Unsupported query: type %s: %s" % (type(self.query), self.query))
-        return response
 
-    def execute_select(self, soql: str, args) -> None:
+    def execute_select(self, soql: str, args: Iterable[Any]) -> None:
         if soql != MIGRATIONS_QUERY_TO_BE_IGNORED:
-            # normal query
+            # normal Django query
             query_all = self.query and self.query.sf_params.query_all
-            tooling_api = self.query and self.query.model._meta.sf_tooling_api_model
+            tooling_api = self.query and self.query.model._meta.sf_tooling_api_model  # type: ignore[union-attr]
             self.cursor.execute(soql, args, query_all=query_all, tooling_api=tooling_api)
         else:
             # Nothing queried about django_migrations to SFDC and immediately responded that
@@ -257,7 +267,8 @@ class CursorWrapper:
             for name in ignore_names:
                 del obj_json_data[name]
 
-    def execute_insert(self, query):
+    def execute_insert(self, query: 'SalesforceInsertQuery'):
+        assert query.model
         table = query.model._meta.db_table
         post_data = extract_insert_values(query)
         if table == 'django_migrations':
@@ -284,10 +295,12 @@ class CursorWrapper:
         ret = self.db.connection.composite_request(composite_data)
         return ret
 
-    def get_pks_from_query(self, query):
+    def get_pks_from_query(self, query: 'SalesforceQuery') -> Sequence[str]:
         """Prepare primary keys for update and delete queries"""
-        where = query.where
+        # TODO fix django-stubs because every Query has a query.where instance of WhereNode
+        where = query.where  # type:ignore [attr-defined]
         sql = None
+        assert query.model and self.query is query
         if where.connector == 'AND' and not where.negated and len(where.children) == 1:
             # simple cases are optimized, especially because a suboptimal
             # nested query based on the same table is not allowed by SF
@@ -326,7 +339,8 @@ class CursorWrapper:
             assert len(cur.description) == 1 and cur.description[0][0] == 'Id'
             return [x[0] for x in cur]
 
-    def execute_tooling_update(self, query):
+    def execute_tooling_update(self, query: 'SalesforceUpdateQuery') -> None:
+        assert query.model
         table = query.model._meta.db_table
         post_data = extract_update_values(query)
         pks = self.get_pks_from_query(query)
@@ -350,8 +364,9 @@ class CursorWrapper:
         assert ret.status_code == 204
         self.rowcount = 1
 
-    def execute_update(self, query):
-        if query.model._meta.sf_tooling_api_model:
+    def execute_update(self, query: 'SalesforceUpdateQuery'):
+        assert query.model
+        if query.model._meta.sf_tooling_api_model:  # type: ignore[attr-defined]
             return self.execute_tooling_update(query)
         table = query.model._meta.db_table
         post_data = extract_update_values(query)
@@ -380,7 +395,8 @@ class CursorWrapper:
         self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
         return ret
 
-    def execute_delete(self, query):
+    def execute_delete(self, query: 'SalesforceDeleteQuery'):
+        assert query.model
         table = query.model._meta.db_table
         pks = self.get_pks_from_query(query)
 
@@ -407,32 +423,32 @@ class CursorWrapper:
         ret = self.db.connection.composite_request(composite_data)
         self.rowcount = len([x for x in ret.json()['compositeResponse'] if x['httpStatusCode'] == 204])
 
-    def __iter__(self):
+    def __iter__(self) -> DbapiCursor[List[Any]]:
         return self.cursor
 
-    def fetchone(self):
+    def fetchone(self) -> Optional[List[Any]]:
         return self.cursor.fetchone()
 
-    def fetchmany(self, size=None):
+    def fetchmany(self, size=None) -> List[List[Any]]:
         return self.cursor.fetchmany(size=size)
 
-    def fetchall(self):
+    def fetchall(self) -> List[List[Any]]:
         return self.cursor.fetchall()
 
     @property
     def description(self):
         return self.cursor.description
 
-    def close(self):
+    def close(self) -> None:
         self.cursor.close()
 
-    def commit(self):
+    def commit(self) -> None:
         self.cursor.commit()
 
-    def rollback(self):
+    def rollback(self) -> None:
         self.cursor.rollback()
 
-    def handle_api_exceptions(self, method, *url_parts, **kwargs):
+    def handle_api_exceptions(self, method: str, *url_parts: str, **kwargs):
         return self.cursor.handle_api_exceptions(method, *url_parts, **kwargs)
 
 
@@ -450,7 +466,7 @@ def chunked(iterable: Iterable[V], n: int) -> Iterator[List[V]]:
         yield chunk
 
 
-def sobj_id(obj):
+def sobj_id(obj: 'SalesforceModel[Any]') -> str:
     assert obj._salesforce_object  # pylint:disable=protected-access
     return obj.pk
 

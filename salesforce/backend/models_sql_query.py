@@ -2,15 +2,17 @@
 Customized Query, RawQuery  (like django.db.models.sql.query)
 """
 import copy
-from typing import Any, cast, Generic, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, cast, Generic, Optional, Sequence, Tuple, Type, TypeVar, TYPE_CHECKING
 from django.conf import settings
 from django.db.models import Count, Model
-from django.db.models.sql import Query, RawQuery, constants
+from django.db.models.sql import Query, RawQuery, constants, subqueries
 import django
 
 from salesforce.backend import DJANGO_40_PLUS, DJANGO_42_PLUS
 from salesforce.backend.compiler import SfParams, SQLCompiler
 from salesforce.dbapi.driver import arg_to_soql
+if TYPE_CHECKING:
+    from salesforce.models import SalesforceModel  # pylint:disable=cyclic-import
 
 _T = TypeVar("_T", bound=Model, covariant=True)
 
@@ -141,3 +143,15 @@ class SalesforceQuery(Query, Generic[_T]):
         if number is None:
             number = 0
         return number
+
+
+class SalesforceInsertQuery(SalesforceQuery, subqueries.InsertQuery, Generic[_T]):
+    model: 'SalesforceModel'  # type: ignore[assignment]  # TODO: fix the django-stubs: model is not None
+
+
+class SalesforceUpdateQuery(SalesforceQuery, subqueries.UpdateQuery, Generic[_T]):
+    model: 'SalesforceModel'  # type: ignore[assignment]
+
+
+class SalesforceDeleteQuery(SalesforceQuery, subqueries.DeleteQuery, Generic[_T]):
+    model: 'SalesforceModel'  # type: ignore[assignment]
