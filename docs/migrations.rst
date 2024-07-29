@@ -4,9 +4,16 @@ Migrations
 new in v5.1.1.
 
 Migrations are now supported in Salesforce databases on SFDC servers.
-The command ``python manage.py migrate --database=salesforce`` can create, update, rename or delete
-custom models and custom fields. It works with all Python and Django versions supported by django-salesforce.
-It is however recommended to use versions supported by mainstream: Python >= 3.8 and Django >= 4.2.
+The command ``python manage.py migrate --database=salesforce`` can
+create, update, rename or delete custom models and custom fields.
+For security reasons it is possible only if they were previously enabled in
+a particular SFDC database. Then it is possible to fine control by the model
+which custom objects and custom fields can be managed by django-salesforce
+and which should remain untouched.
+The migrate command works with all Python and Django versions supported by django-salesforce.
+It is however recommended to use versions supported by mainstream or at least
+Django >= 4.2 and Python >= 3.8. The licence policy is the same as for django-salesforce
+used with the newest version of Django.
 
 
 Quick start
@@ -18,19 +25,21 @@ Quick start
     python manage.py migrate --database=salesforce --sf-create-permission-set
 
 Then add some custom objects (models) to Salesforce and some custom fields.
-For example add a custom field to a standard object "Contact":
+As a small example you might want to add a custom field to a standard object "Contact"
+and to create two custom objects by a migration:
 
 ``models.py``:
 
 .. code:: python
 
     class Contact(SalesforceModel):
-        # add a custom field "my_field" to a standard object "Contact"
+        # Add a custom field "my_field" to a standard object "Contact"
         last_name = models.CharField(max_length=50)
         my_field = models.CharField(max_length=50, null=True, sf_managed=True)
 
     class MyObject(SalesforceModel):
-        # a field with API name "Name" is created automatically by SFDC and its "max_length" is ignored.
+        # A field with API name "Name" is created automatically by SFDC.
+        # You set its verbose name. Its "max_length" is ignored.
         name = models.CharField(max_length=50, verbose_name="My Object Name")
         my_field = models.CharField(max_length=50, null=True)  # this is a custom field and it is sf_managed
 
@@ -39,7 +48,7 @@ For example add a custom field to a standard object "Contact":
             # db_table = MyObject__c
 
     class OtherObject2(SalesforceModel):
-        # we prefer an automatic read only name here in style "A-{0000}" here
+        # Here you prefer an automatic read only name field in the style "A-{0000}"
         name = models.CharField(max_length=50, sf_read_only=models.READ_ONLY)
         ...
 
@@ -47,11 +56,14 @@ For example add a custom field to a standard object "Contact":
             sf_managed = True
             # db_table = OtherObject2__c
 
-Add the change to Salesforce:
+Add this change to Salesforce:
 
 .. code:: shell
 
-    # for every migration
+    # before the first managed migration on the database create a permission set "Django_Salesforce".
+    python manage.py migrate --database=salesforce --sf-create-permission-set
+
+    # then for every migration
     python manage.py makemigrations
     python manage.py migrate --database=salesforce
 
@@ -71,7 +83,7 @@ These options are checked only for databases on salesforce.com (SFDC) and are ig
 
 | Here is a detailed explanation that ``migrate`` command modifies SFDC only if:  
 | A) if it is explicitly enabled in the Django model  
-| B) and also it is enabled in Salesforce.com administration  
+| B) and also it is enabled in Salesforce.com Setup  
 | C) and additional conditions must be met on production databases.
 |
 
@@ -83,13 +95,13 @@ Custom fields can be created and managed also in objects not managed by Django i
 by a parameter ``sf_managed=True`` in a field definition. Custom fields in a sf_managed object do not
 require a sf_managed parameter.
 
-**B\) How to enable migrations also in Salesforce.com administration.**
+**B\) How to enable migrations also in Salesforce.com Setup.**
 
 A basic security feature is that a permission set "Django_Salesforce" must exist in the database
 before a ``migrate`` command is executed.
 It can be created by the command
 ``python manage.py migrate --database=salesforce --sf-create-permission-set``
-that also assigns the current user to that permission set.
+that also assigns that permission set to the current user.
 
 A custom table can be deleted or renamed by Django only if it has been created by Django originally.
 (More precisely: All possible object permissions are automatically enabled for a new Salesforce object
@@ -97,9 +109,13 @@ in "Django_Salesforce" Permission Set when the table is created by Django,
 including "PermissionsModifyAllRecords". That is later verified before an object is deleted or renamed.)
 
 A custom field can be modified or deleted by Django if at least one field has been created by Django
-in that table. (More precisely: The object permission "PermissionsEdit" is assigned to a Salesforce
+in that table or if the whole table can be modified by Django. (More precisely: The object permission
+"PermissionsEdit" is assigned to a Salesforce
 in "Django_Salesforce" Permission Set when a custom field is created by Django.
 No field can be modified or deleted by Django in a table without this ObjectPermission. TODO discussion about it.)
+
+At the end of development you may want to disable all migrations in the production database
+e.g. by renaming the API Name of the permission set.
 
 **C\) Security on production databases**
 
@@ -116,11 +132,15 @@ They can be problematic if management by Django has been combined with some manu
 administration of the same objects or if an application should work on an existing database
 and also on a new empty database.
 
+You can create the initial migrations that reflect the initial stat of the database from
+a model without any ``sf_managed=True``. The consequence is that these migrations will
+be never reversed by Django
+
 An option ``--sf-interactive`` allows to interactively skip
-any individual part of the migration and eventually to continue if you are sure that
+any individual part of a migration and eventually to continue if you are sure that
 an error can be ignored (only on a sandbox),
 e.g. if it failed because a duplicit object has beens created or an object should be deleted,
-but it has been deleted previously.
+but it does not exist now.
 It allows to normally terminate or to ignore an error or to start debugging.
 
 .. code::
@@ -139,8 +159,9 @@ manually on an instance before the migration system is enabled on it.
 The option ``--sf-debug-info`` will print a short useful context about an error before raising an exception.
 It is useful also in an interactive mode for a decision if the command should continue or to be terminated.
 
-The option ``--sf-no-check-permissions`` is useful if the database contains no important data,
-but the migration state is lost out of sync and you want to go to an initial state and migrate again.
+The option ``--sf-no-check-permissions`` disables the security mechanism B) about permission of
+objects and fields. It is useful if the database contains no important data,
+but the migration state is lost or out of sync and you want to go to an initial state and migrate again.
 Then this combination of parameters could be useful:
 
 .. code:: shell
@@ -151,6 +172,7 @@ Then this combination of parameters could be useful:
 
 The combination of ``--sf-interactive --noinput`` means that all question "Run this command?"
 are answered "Y(es)" and all questions "Stop after this error?" are answered "c(ontinue)".
+(The option '--noinput' is currently ignored but can be easily enabled by changin one
 
 
 Reference
@@ -159,10 +181,11 @@ Reference
 | **Terminology**:  
 | **Model** in Django terminology is an equivalent of **Table** in database terminology and equivalent to **Object** in Salesforce terminology. These three points of view are used in this text.  
 |  
-| **Builtin** object and builtin field  have a name without any double underscore ``'__'``.  
+| **Builtin** object and builtin field have a name without any double underscore ``'__'``.  
 | **Custom** object and custom field are in the form ``ApiName__c`` with only a suffix ``__c`` and without any other double underscore.  
-| **Namespace** object and namespace field are in the form ``NameSpace__ApiName__c``.  
+| **Namespace** object and namespace field names are with two double underscores in the form ``NameSpace__ApiName__c``.  
 |   
+| Only custom objects or fields can be migrated, neither builtins nor namespace objects or fields.
 | Because custom fields can be managed by Django automatically in SFDC and the algorithm
 | of conversion a name to db_column is guaranteed stable then the db_column is not so important as before.  
 
@@ -170,10 +193,10 @@ Reference
 | Default API name from a lower case name is created by capitalizing and removing spaces:  
 | If the django field name is not lower case then the default api name is equal.  
 | e.g. default api name "LastModifiedDate" can be created from "last_modified_date" or from "LastModifiedDate".  
-| Custom field can be rocognized by "custom=True".  
+| Custom field can be recognized by "custom=True".  
 | Namespace field can be recognized by "sf_prefix='NameSpacePrefix'".  
 | All unspecified fields without "db_column" in custom objects are expected to be custom field,
-| except a few standard well known system names like "LastModifiedDate".  
+| except a few standard well known system names like e.g. "LastModifiedDate" or its equivalent "last_modified_date".  
 |  
 | (If you find a new not recognized system name then specify an explicit "custom=False"
 | or an explicit "db_column=..." and report that bug, but it is extremely unprobable because
@@ -187,6 +210,7 @@ model ``models.py`` with minimum of `sf_managed`` options:
 - Custom fields in sf_managed custom object are sf_managed by default.
 - Custom fields in non sf_managed objects are not sf_managed by default.
 - Builtin fields and namespace fields and builtin objects and namespace objects should be never sf_managed.
+  (It is a FieldError)
 - The "Name" field (a field with db_column='Name') is a special part of a database Object and
   its sf_managed values is not important. Its ``sf_managed=`` should be omitted or it should be the same
   as the value of the object.
@@ -238,8 +262,8 @@ Master-Detail Relationship is not currently implemented even that it is an impor
 All deleted objects and fields remain in a trash bin (renamed to prevent a name collision)
 and they are not purged on delete.
 
-It works currently in slow mode that modifies every field and every table individually.
-That mode is useful for troubleshooting if some object is locked by something in some 
+Migrations work currently in a slow mode that modifies every field and every table individually.
+That mode is useful for troubleshooting if some object is locked by something in a
 Salesforce instance and that mode can be easily switched to an interactive mode.
 
 A transactional mode should be however written where every migration will change correctly
