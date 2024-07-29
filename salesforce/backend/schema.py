@@ -323,6 +323,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             for sql in self.deferred_sql:
                 self.execute(sql)
 
+    @staticmethod
+    def check_sf_managed_model(model: Type[Model]) -> bool:
+        return (getattr(model._meta.auto_field, 'sf_managed_model', False) and
+                len(model._meta.db_table.split('__')) == 2)
+
     @wrap_debug
     def create_model(self, model: Type[Model]) -> None:
         if model._meta.db_table == 'django_migrations':
@@ -330,7 +335,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 return
             model._meta.db_table += '__c'
         db_table = model._meta.db_table
-        sf_managed_model = getattr(model._meta.auto_field, 'sf_managed_model', False)
+        sf_managed_model = self.check_sf_managed_model(model)
         if sf_managed_model or model._meta.db_table == 'django_migrations__c':
             # TODO if self.connection.migrate_options['batch']:  create also fields by the same request
             log.debug('create_model %s', db_table)
@@ -356,7 +361,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     def delete_model(self, model: Type[Model]) -> None:
         if model._meta.db_table == 'django_migrations':
             model._meta.db_table += '__c'
-        sf_managed_model = getattr(model._meta.auto_field, 'sf_managed_model', False)
+        sf_managed_model = self.check_sf_managed_model(model)
         if sf_managed_model or model._meta.db_table == 'django_migrations__c':
             log.debug("delete_model %s", model)
             self.check_permissions(model._meta.db_table)
@@ -389,7 +394,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     @wrap_debug
     def alter_db_table(self, model: Type[Model], old_db_table: str, new_db_table: str) -> None:
-        sf_managed_model = getattr(model._meta.auto_field, 'sf_managed_model', False)
+        sf_managed_model = self.check_sf_managed_model(model)
         if sf_managed_model:
             self.check_permissions(old_db_table)
             if new_db_table != old_db_table:

@@ -207,10 +207,11 @@ All fields that can be managed by Django in SFDC are entirely explicitly identif
 by a parameter ``sf_managed=True``. The right value ``field.sf_managed`` can be usually derived correctly from a simple
 model ``models.py`` with minimum of `sf_managed`` options:
 
-- Custom fields in sf_managed custom object are sf_managed by default.
+- Custom fields in sf_managed objects are sf_managed by default.
 - Custom fields in non sf_managed objects are not sf_managed by default.
-- Builtin fields and namespace fields and builtin objects and namespace objects should be never sf_managed.
-  (It is a FieldError)
+- Builtin fields and namespace fields should be never explicitly set to sf_managed. It is a FieldError.
+- If a builtin object or a namespace object is set to sf_managed then it only affects their custom fields,
+  not the object.
 - The "Name" field (a field with db_column='Name') is a special part of a database Object and
   its sf_managed values is not important. Its ``sf_managed=`` should be omitted or it should be the same
   as the value of the object.
