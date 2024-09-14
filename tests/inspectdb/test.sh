@@ -23,7 +23,7 @@ if [ $RESULT_0 == 0 ]; then
 
 
     echo "*** parse test ***"
-    # parse tests don't import tthe models.py
+    # parse tests don't import the models.py
     DJANGO_SETTINGS_MODULE=salesforce.testrunner.settings python -m unittest tests.inspectdb.tests
     #python manage.py test --settings=tests.inspectdb.settings tests.inspectdb
     RESULT_3=$?

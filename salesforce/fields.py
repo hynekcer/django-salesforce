@@ -19,7 +19,7 @@ from django.db.models import fields
 from django.db.models import PROTECT, DO_NOTHING  # NOQA pylint:disable=unused-import
 from django.db import models
 
-from salesforce.backend import DJANGO_50_PLUS
+from salesforce.backend import DJANGO_30_PLUS, DJANGO_50_PLUS
 from salesforce.defaults import DEFAULTED_ON_CREATE, DefaultedOnCreate, BaseDefault
 
 
@@ -52,8 +52,13 @@ STANDARD_FIELDS = {
     )
 }
 
+if TYPE_CHECKING:
+    _Base = fields.AutoField
+else:
+    _Base = object
 
-class SalesforceAutoField(fields.AutoField):
+
+class SalesforceAutoFieldMixin(_Base):
     """
     An AutoField that works with Salesforce primary keys.
 
@@ -65,7 +70,7 @@ class SalesforceAutoField(fields.AutoField):
     default_error_messages = {
         'invalid': _('This value must be a valid Salesforce ID.'),
     }
-    # the model can be managed by Django also in SFDC databases if 'self.sf_managed_model = True'
+    # the model can be managed by Django all databases including SFDC if 'self.sf_managed_model = True'
     sf_managed_model = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -120,6 +125,27 @@ class SalesforceAutoField(fields.AutoField):
         if self.sf_managed_model:
             kwargs['sf_managed_model'] = True
         return name, path, args, kwargs
+
+
+class SalesforceAutoField(SalesforceAutoFieldMixin, fields.AutoField):
+    pass
+
+
+AutoField = SalesforceAutoField
+
+
+class SalesforceBigAutoField(SalesforceAutoFieldMixin, fields.BigAutoField):
+    pass
+
+
+BigAutoField = SalesforceBigAutoField
+
+
+if DJANGO_30_PLUS:
+    class SalesforceSmallAutoField(SalesforceAutoFieldMixin, fields.SmallAutoField):  # type: ignore[name-defined,misc]
+        pass                                                                          # unsupported by old django-stubs
+
+    SmallAutoField = SalesforceSmallAutoField
 
 
 class SfField(models.Field):
@@ -423,6 +449,3 @@ class XJSONField(TextField):
 
     def to_python(self, value: Any) -> Any:
         return value
-
-
-AutoField = SalesforceAutoField
