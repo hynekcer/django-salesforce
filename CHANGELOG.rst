@@ -16,6 +16,9 @@ experimental.
 
 [5.1.1] Unpublished
 -------------------
+* Add: Implemented SalesforceBigAutoField because it is frequently required for
+  settings.DEFAULT_AUTO_FIELD or AppConfig.default_auto_field instead of
+  'django.db.models.BigAutoField', but compatible with non Salesforce databases.
 * Add: Written documentation docs/migrations.rst about the system how to
   restrict objects that should be managed in SFDC, which instance can be
   managed and which custom models can be never destructed e.g. in production
