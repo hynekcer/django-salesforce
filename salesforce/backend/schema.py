@@ -171,12 +171,16 @@ def wrap_debug(func: Callable[..., None]) -> Callable[..., None]:
         if self.collect_sql:
             raise NotImplementedError("Command 'sqlmigrate' not implemented. Use 'migrate --sf-interactive' instead "
                                       "to can run by small parts.")
+        # in non interactive mode: a sub-command is executed immediately
         if not interactive and not interact_destructive_production:
             return func(self, model, *args, **kwargs)
 
+        # guess if the command is sf_managed. if not then do not log it and no try/except.
+        # though call them and then probably do nothing
         assert issubclass(model, Model)
         sf_managed = model._meta.db_table == 'django_migrations__c'
         if args and isinstance(args[0], Field):
+            # this is managed if any of the first two args is a sf_managed field
             field = args[0]
             sf_managed = sf_managed or getattr(field, 'sf_managed', False)
             if args[1:] and isinstance(args[1], Field):
