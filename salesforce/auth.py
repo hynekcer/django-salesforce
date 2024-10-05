@@ -215,6 +215,7 @@ class StaticGlobalAuth(SalesforceAuth):
                 raise OperationalError('Invalid auth signature received')
         else:
             raise SalesforceAuthError("oauth failed: %s: %s" % (self.settings_dict['USER'], response.text))
+        assert 'access_token' in response_data
         return response_data
 
 
