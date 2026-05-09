@@ -33,8 +33,6 @@ class OAuthTest(unittest.TestCase):
 
         auth_obj = auth.SalesforcePasswordAuth(sf_alias, settings_dict=settings_dict,
                                                _session=_session)
-        if settings_dict.get('AUTH') == 'salesforce.auth.SimpleSfPasswordAuth':
-            auth_obj.del_token()
         auth_obj.get_auth()
         self.validate_oauth(auth.oauth_data[sf_alias])
         old_data = auth.oauth_data

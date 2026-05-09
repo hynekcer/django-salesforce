@@ -14,6 +14,12 @@ Some items here can be marked as "internal": not ready enough or
 experimental.
 
 
+[6.0.1] Unpublished
+-------------------
+* Remove obsoleted: auth.SimpleSfPasswordAuth because SOAP API login() will be
+  unsupported in Salesforce 67.0 Summer ’27.
+
+
 [6.0] 2026-04-09
 ----------------
 * Add: Support for Django 6.0
