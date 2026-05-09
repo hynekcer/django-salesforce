@@ -55,6 +55,7 @@ PROBLEMATIC_OBJECTS = [
     'FlowDebugRefreshEvent',  # new in API 65.0 Winter '26 (no 'Id' field)
     'DevopsRequestInfoEvent',  # new in API 66.0 Spring '26 (no 'Id' field)
     'FeatureUsageEvent',  # new in API 66.0 Spring '26 (no 'Id' field)
+    'LoginEventStream',  # new in API 67.0 Summer '26 (no 'Id' field)
 ]
 
 # this global variable is for `salesforce.management.commands.inspectdb`
