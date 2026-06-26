@@ -39,6 +39,7 @@ DJANGO_50_PLUS = django.VERSION[:2] >= (5, 0)
 DJANGO_51_PLUS = django.VERSION[:2] >= (5, 1)
 DJANGO_52_PLUS = django.VERSION[:2] >= (5, 2)
 DJANGO_60_PLUS = django.VERSION[:2] >= (6, 0)
+DJANGO_61_PLUS = django.VERSION[:2] >= (6, 1)
 max_django = (6, 0)
 is_dev_version = bool(django.VERSION[3:] and re.match('(alpha|beta|rc)', django.VERSION[3]))
 if django.VERSION[:2] < (3, 2) or django.VERSION[:2] > max_django and not is_dev_version:

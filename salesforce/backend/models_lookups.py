@@ -27,7 +27,8 @@ class Range(models.lookups.Range):  # pylint:disable=abstract-method
         rhs, rhs_params = self.process_rhs(compiler, connection)
         assert rhs == ('%s', '%s')
         assert len(rhs_params) == 2
-        params = lhs_params + [rhs_params[0]] + lhs_params + [rhs_params[1]]
+        # assert isinstance(lhs_params, tuple if DJANGO_61_PLUS else list)
+        params = tuple(lhs_params) + rhs_params[0:1] + tuple(lhs_params) + rhs_params[1:2]
         lhs = compiler.sf_fix_field(lhs)
         return f'({lhs} >= %s AND {lhs} <= %s)', params
 
