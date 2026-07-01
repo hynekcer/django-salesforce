@@ -19,8 +19,10 @@ from django.db.models import fields
 from django.db.models import PROTECT, DO_NOTHING  # NOQA pylint:disable=unused-import
 from django.db import models
 
-from salesforce.backend import DJANGO_50_PLUS
+from salesforce.backend import DJANGO_50_PLUS, DJANGO_61_PLUS
 from salesforce.defaults import DEFAULTED_ON_CREATE, DefaultedOnCreate, BaseDefault
+if DJANGO_61_PLUS:
+    from django.db.models import DB_CASCADE, DB_SET_NULL  # type: ignore[attr-defined] # noqa
 
 
 # None of field types defined here don't need a "deconstruct" method.
@@ -286,7 +288,7 @@ class SfForeignObjectMixin(SfField, _MixinTypingBase):
     def __init__(self, to: Union[Type[models.Model], str], on_delete: Callable[..., None], *args: Any, **kwargs: Any
                  ) -> None:
         # Checks parameters before call to ancestor.
-        if on_delete.__name__ not in ('PROTECT', 'DO_NOTHING'):
+        if on_delete.__name__ not in ('PROTECT', 'DO_NOTHING', 'DB_CASCADE', 'DB_SET_NULL'):
             # The option CASCADE (currently fails) would be unsafe after a fix
             # of on_delete because Cascade delete is not usually enabled in SF
             # for safety reasons for most fields objects, namely for Owner,

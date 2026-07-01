@@ -71,7 +71,7 @@ class ExportedModelTest(unittest.TestCase):
                 line = self.match_line(r'    contact = ', text)
                 self.assertIn('custom=True', line)
                 self.assertIn('ForeignKey(Contact', line)
-                self.assertIn(', models.DO_NOTHING,', line)
+                self.assertRegex(line, ', models.(DO_NOTHING|DB_SET_NULL|DB_CASCADE),')
         else:
             self.skipTest("The model for the table Test__c not exported.")
 

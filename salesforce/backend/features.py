@@ -82,3 +82,5 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_unlimited_charfield = False
 
     # requires_literal_defaults = True  # TODO
+
+    supports_bit_aggregations = False  # new in Django 6.1

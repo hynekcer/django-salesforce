@@ -20,9 +20,15 @@ from django.db.backends.base.introspection import (
 )
 from django.utils.text import camel_case_to_spaces
 from django.db.backends.utils import CursorWrapper as _Cursor  # for typing
+from django.db.models import DO_NOTHING
 
-from salesforce.backend import DJANGO_50_PLUS
+from salesforce.backend import DJANGO_50_PLUS, DJANGO_61_PLUS
 import salesforce.fields
+if DJANGO_61_PLUS:
+    # pylint:disable=no-name-in-module,unused-import,ungrouped-imports # noqa
+    from django.db.models import DB_CASCADE, DB_SET_NULL  # type: ignore[attr-defined]
+else:
+    DB_CASCADE = DB_SET_NULL = DO_NOTHING
 
 log = logging.getLogger(__name__)
 

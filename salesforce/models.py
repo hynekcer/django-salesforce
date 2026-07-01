@@ -22,22 +22,23 @@ import warnings
 from django.db import models
 from django.db.models.base import ModelBase
 # Only these two `on_delete` options are currently supported
-from django.db.models import PROTECT, DO_NOTHING  # NOQA pylint:disable=unused-wildcard-import,wildcard-import
-# from django.db.models import CASCADE, PROTECT, SET_NULL, SET, DO_NOTHING
+from django.db.models import PROTECT, DO_NOTHING  # noqa pylint:disable=unused-wildcard-import,wildcard-import
+# from django.db.models import CASCADE, SET_NULL, SET
 
 from salesforce.defaults import DefaultedOnCreate, DEFAULTED_ON_CREATE
 from salesforce.fields import (
-    SalesforceAutoField as SalesforceAutoField, SF_PK, SfField, ForeignKey as ForeignKey)
-from salesforce.fields import (NOT_UPDATEABLE as NOT_UPDATEABLE, NOT_CREATEABLE as NOT_CREATEABLE,
-                               READ_ONLY as READ_ONLY)
-from salesforce.fields import (  # noqa pylint:disable=useless-import-alias  # for other modules, but unused here
+    SalesforceAutoField as SalesforceAutoField, SF_PK, SfField, ForeignKey as ForeignKey,
+    NOT_UPDATEABLE as NOT_UPDATEABLE, NOT_CREATEABLE as NOT_CREATEABLE, READ_ONLY as READ_ONLY,
+)
+from salesforce.fields import (  # noqa # for other modules, but unused here
     AutoField as AutoField, BigIntegerField as BigIntegerField, BooleanField as BooleanField,
     CharField as CharField, DateField as DateField, DateTimeField as DateTimeField,
     DecimalField as DecimalField, EmailField as EmailField, FloatField as FloatField,
     IntegerField as IntegerField, OneToOneField as OneToOneField, SmallIntegerField as SmallIntegerField,
     TextField as TextField, TimeField as TimeField, URLField as URLField, XJSONField as XJSONField,
 )
-from salesforce.fields import *  # NOQA pylint:disable=unused-wildcard-import,wildcard-import
+from salesforce.fields import *  # noqa pylint:disable=unused-wildcard-import,wildcard-import
+from salesforce.backend import DJANGO_61_PLUS
 from salesforce.backend.indep import LazyField
 if not TYPE_CHECKING:
     # the SalesforceManager and the module salesforce.backend.manager whould be imported
@@ -45,8 +46,12 @@ if not TYPE_CHECKING:
     # that assigns Manager[_T] (a Django manager for the model _T).
     from salesforce.backend import manager
 
-__all__ = ('SalesforceModel', 'Model', 'DEFAULTED_ON_CREATE', 'PROTECT', 'DO_NOTHING', 'SF_PK', 'SfField',
-           'NOT_UPDATEABLE', 'NOT_CREATEABLE', 'READ_ONLY', 'DefaultedOnCreate')
+__all__ = ['SalesforceModel', 'Model', 'DEFAULTED_ON_CREATE', 'PROTECT', 'DO_NOTHING', 'SF_PK', 'SfField',
+           'NOT_UPDATEABLE', 'NOT_CREATEABLE', 'READ_ONLY', 'DefaultedOnCreate']
+if DJANGO_61_PLUS:
+    # pylint:disable=no-name-in-module,unused-import,ungrouped-imports # noqa
+    from django.db.models import DB_CASCADE, DB_SET_NULL  # type: ignore[attr-defined] # noqa
+    __all__.extend(['DB_CASCADE', 'DB_SET_NULL'])
 
 log = logging.getLogger(__name__)
 
