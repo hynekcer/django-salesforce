@@ -304,30 +304,55 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         representing all relationships to the given table. Indexes are 0-based.
         """
         # pylint:disable=global-statement,too-many-locals,too-many-nested-blocks,unused-argument
+
         def table2model(table_name: str) -> str:
             return SfProtectName(table_name).title().replace(' ', '').replace('-', '')
+
         global last_introspection
-        result = {}
+        result: Dict[str, Tuple[str, 'SfProtectName']] = {}
         reverse = {}  # type: Dict[str, List[str]]
         important_related_names = []
         fields_map = {}  # type: Dict[str, Dict[str, Any]]
         for _, field in enumerate(self.table_description_cache(table_name)['fields']):
             references_to = self.references_to(field)
             if references_to:
+                # skip duplicate values because sObjects ApprovalWorkItem and FlowOrchestrationWorkItem have
+                # double reference to Group in AssignedToId field and AssigneeId
+                references_to = list(dict.fromkeys(references_to))
                 params = OrderedDict()
                 relationship_order = field['relationshipOrder']
                 reference_to_name = SfProtectName(references_to[0])
                 if relationship_order is None:
-                    relationship_tmp = set()
+                    db_on_delete_set = set()
                     for rel in references_to:
+                        back_references = 0
                         for chld in self.table_description_cache(rel)['childRelationships']:
                             if chld['childSObject'] == table_name and chld['field'] == field['name']:
-                                relationship_tmp.add(chld['cascadeDelete'])
-                    assert len(relationship_tmp) <= 1
-                    if True in relationship_tmp:
-                        relationship_order = '*'
+                                db_on_delete_set.add(DB_CASCADE if chld['cascadeDelete'] else
+                                                     DB_SET_NULL if field['nillable'] else
+                                                     DO_NOTHING)
+                                back_references += 1
+                                if chld['cascadeDelete']:
+                                    relationship_order = '*'
+                        assert back_references <= 1, "assert that not more than one back reference for a model exists"
+                        if back_references == 0:
+                            # Missing back reference is used mostly for MasterRecordId and RecordType (which have one
+                            # reference sObject) and for OwnerId, WhatId, WhoId, ActorId (which have multiple
+                            # reference sObjects)
+                            db_on_delete_set.add(DO_NOTHING)
+                    if len(db_on_delete_set) > 1:
+                        # for example OwnerId of ActivityHistory has more types of db_on_delete but it is read only
+                        assert not field['createable'], \
+                                f"field {field['name']} fields with multiple db_on_delete should be not creatable"
+                    db_on_delete = db_on_delete_set.pop()
+                else:
+                    assert relationship_order in (0, 1), "assert not more than two master detail relationships"
+                    db_on_delete = DB_CASCADE
                 params['refs'] = (self.references_to(field, all=True), relationship_order)
-                result[field['name']] = ('Id', reference_to_name)
+                if DJANGO_61_PLUS:
+                    result[field['name']] = ('Id', reference_to_name, db_on_delete)  # type: ignore[assignment]
+                else:
+                    result[field['name']] = ('Id', reference_to_name)
                 reverse.setdefault(reference_to_name, []).append(field['name'])
                 params.update(self.get_field_params(field))
                 fields_map[field['name']] = params
