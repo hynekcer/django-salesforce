@@ -15,7 +15,7 @@ import logging
 # It can be customized by settings.DATABASES['salesforce']['API_VERSION']
 API_VERSION = '67.0'  # Summer '27
 
-from salesforce.dbapi.exceptions import (  # NOQA pylint:disable=unused-import,useless-import-alias,wrong-import-position
+from salesforce.dbapi.exceptions import (  # NOQA pylint:disable=unused-import,wrong-import-position
     IntegrityError as IntegrityError, DatabaseError as DatabaseError, SalesforceError as SalesforceError,
 )
 

@@ -27,7 +27,8 @@ class DatabaseOperations(BaseDatabaseOperations):  # pylint:disable=too-many-pub
     #    datetime_trunc_sql,     time_trunc_sql,
     #    regex_lookup
     #
-    # pylint:disable=abstract-method,no-self-use,unused-argument
+    # pylint:disable=abstract-method,no-self-use,unused-argument,no-else-return,too-many-return-statements
+    # pylint:disable=arguments-differ
 
     compiler_module = "salesforce.backend.compiler"
     explain_prefix = 'EXPLAIN'

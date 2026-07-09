@@ -22,6 +22,7 @@ from django.db import models
 from salesforce.backend import DJANGO_50_PLUS, DJANGO_61_PLUS
 from salesforce.defaults import DEFAULTED_ON_CREATE, DefaultedOnCreate, BaseDefault
 if DJANGO_61_PLUS:
+    # pylint:disable=no-name-in-module,unused-import,ungrouped-imports # noqa
     from django.db.models import DB_CASCADE, DB_SET_NULL  # type: ignore[attr-defined] # noqa
 
 
@@ -237,6 +238,7 @@ class FloatField(SfField, models.FloatField):
     It is now really a float type not a Decimal.
     """
     def from_db_value(self, value: Any, expression: Any, connection: Any) -> Any:
+        # pylint:disable=unused-argument,no-self-use
         if str(value) == '' or value is None:
             return value
         return float(value)

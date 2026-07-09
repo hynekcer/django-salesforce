@@ -289,7 +289,7 @@ class SalesforcePasswordAuth(StaticGlobalAuth):
         try:
             response = self._session.post(url, data=auth_params, timeout=3)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
-            log.info(f"Login: network error db={self.db_alias}: {exc}")
+            log.info("Login: network error db=%s: %s", self.db_alias, exc)
             response = self._session.post(url, data=auth_params, timeout=6)
         return self.checked_auth_response(response)
 
@@ -600,7 +600,7 @@ class SalesforceClientCredentialsAuth(StaticGlobalAuth):
         try:
             response = self._session.post(url, data=auth_params, timeout=3)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
-            log.info(f"Login: network error db={self.db_alias}: {exc}")
+            log.info("Login: network error db=%s: %s", self.db_alias, exc)
             response = self._session.post(url, data=auth_params, timeout=6)
         return self.checked_auth_response(response)
 

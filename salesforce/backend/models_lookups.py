@@ -73,7 +73,7 @@ class NotEqual(lookups.Exact):  # pylint:disable=abstract-method
         return '!= %s' % rhs
 
 
-class YearLookup(lookups.YearLookup):
+class YearLookup(lookups.YearLookup):  # pylint:disable=abstract-method
     def override_as_sql(self, compiler, connection):
         sql, params = self.as_sql(compiler, connection)
         lhs, *rest = sql.split(' ', 1)

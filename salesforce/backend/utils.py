@@ -221,6 +221,7 @@ class CursorWrapper:
         self.rowcount = self.cursor.rowcount
 
     def our_fix_default(self, obj_json_data: Dict[str, Any]) -> None:
+        # pylint:disable=no-self-use,no-member
         if DJANGO_50_PLUS:
             # sql, params = obj_json_data[name].as_sql(self.query.get_compiler('salesforce'), self.db)
             ignore_names = [

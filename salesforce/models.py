@@ -160,7 +160,7 @@ def make_dynamic_fields(pattern_module: types.ModuleType, dynamic_field_patterns
     The search stops after the first match.
     A normal field that exists directly in a class is never rewritten
     by a dynamic field..
-    All ForeingKey fields should be created explicitely. (For now to
+    All ForeignKey fields should be created explicitely. (For now to
     prevent possible issues and also for better readibility of the
     model. The automatic "dynamic" fields are intended especially for
     "maybe can be useful" fields and will work with ForeignKey in simple

@@ -71,7 +71,8 @@ disable=
     fixme,        # W0511 (ignored: only the "TODO" word should be used here; grep is better)
     inconsistent-return-statements,  # R1710 (similar style to Django) "Either all return statements in
                                      # a function should return an expression, or none of them should."
-    consider-using-f-string  # C209
+    consider-using-f-string, # C209
+    useless-import-alias     # C0414 (import alias does not rename original package) useful for mypy --strict
 
 
 [REPORTS]

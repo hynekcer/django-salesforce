@@ -91,7 +91,7 @@ class AbstractAccount(SalesforceModel):
         abstract = True
 
     def __str__(self):
-        return self.Name  # pylint: disable=no-member
+        return self.Name  # type: ignore[attr-defined] # pylint: disable=no-member
 
 
 class CoreAccount(AbstractAccount):

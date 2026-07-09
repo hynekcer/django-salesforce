@@ -92,12 +92,12 @@ not only the DB API.
 """
 
 import logging
-from salesforce.dbapi.driver import (  # noqa pylint:disable=useless-import-alias
+from salesforce.dbapi.driver import (  # noqa
     Connection as Connection,
     connect as connect,
     get_connection as get_connection,
 )
-from salesforce.dbapi.exceptions import (  # noqa pylint:disable=useless-import-alias
+from salesforce.dbapi.exceptions import (  # noqa
     IntegrityError as IntegrityError, DatabaseError as DatabaseError, SalesforceError as SalesforceError,
     OperationalError as OperationalError,
 )
